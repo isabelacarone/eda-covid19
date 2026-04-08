@@ -1,0 +1,15 @@
+# ignorar arquivos python de cache
+__pycache__/
+
+# ignorar arquivos de configuração do vscode
+.vscode/
+
+# ignorar arquivos jupyter
+.ipynb_checkpoints/
+
+# ignorar arquivos de ambiente virtual
+venv/
+
+# ignorar arquivos data
+data/
+*.csv 
