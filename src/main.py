@@ -129,3 +129,34 @@ def extrair_dados(
     # 'date' como DataType
     df = df.withColumn("date", F.to_date(F.col("date"), "yyyy-MM-dd"))
     return df
+
+
+def exibir_visao_geral(df) -> None:
+    """
+    Imprime informações básicas sobre o DataFrame carregado.
+
+    Args:
+        df: DataFrame PySpark bruto.
+    """
+    total_linhas = df.count()
+    total_colunas = len(df.columns)
+    data_min = df.agg(F.min("date")).collect()[0][0]
+    data_max = df.agg(F.max("date")).collect()[0][0]
+    total_paises = df.select("country").distinct().count()
+    total_continentes = df.filter(
+        F.col("continent").isNotNull()
+    ).select("continent").distinct().count()
+
+    print("=" * 60)
+    print("ETAPA 1 — Visão Geral do Dataset")
+    print("=" * 60)
+    print(f"  Linhas        : {total_linhas:,}")
+    print(f"  Colunas       : {total_colunas}")
+    print(f"  Países        : {total_paises}")
+    print(f"  Continentes   : {total_continentes}")
+    print(f"  Período       : {data_min} → {data_max}")
+    print()
+    print("Schema:")
+    df.printSchema()
+
+print(exibir_visao_geral(extrair_dados(criar_spark_session(), CAMINHO_DADOS)))
