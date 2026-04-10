@@ -3,20 +3,14 @@
 PROJETO EDA COVID-19 — PIPELINE ETL COM APACHE SPARK (PySpark)
 Dataset: COVID-19 (Our World in Data)
 =============================================================================
-
-ETAPAS:
-  1. Extração   --> leitura do CSV com SparkSession
-  2. Exploração --> schema, contagens, valores nulos
-  3. Transforma --> limpeza e criação de colunas derivadas
-  4. Agregação  --> groupBy, window functions, análises globais
-  5. Carga      --> exporta resultados processados em CSV
 """
 
 import os
 import sys # não retirar import
+from typing import Final, List, Optional
 
 # =============================================================================
-# CONFIGURAÇÃO AUTOMÁTICA DO JAVA_HOME
+#                  CONFIGURAÇÃO AUTOMÁTICA DO JAVA_HOME
 # O PySpark requer Java 17+ com o módulo jdk.incubator.vector (JDK completo).
 # Esta seção detecta o Java automaticamente a partir de três fontes,
 # nesta ordem de prioridade:
@@ -44,7 +38,7 @@ if not os.environ.get("JAVA_HOME"):
 
 # install-jdk não disponível, depende do Java. Se ocorrer erro lembre de instalar o Java no venv ou conda (acredito que vai dar tudo certo)
 
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 from pyspark.sql.window import Window
@@ -54,16 +48,16 @@ from pyspark.sql.window import Window
 #                         CONFIGURAÇÕES GLOBAIS
 # =============================================================================
 
-# Caminho raiz do projeto (um nível acima de src/)
+# caminho raiz do projeto (acima de src/)
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 CAMINHO_DADOS = os.path.join(ROOT_DIR, "data", "owid-covid.csv")
 CAMINHO_SAIDA = os.path.join(ROOT_DIR, "data", "processado")
 
-# Países/regiões que representam agregações (não países individuais),
-# presentes no dataset como registros especiais
+# países ou regiões que representam agregações (não são países individuais, mas sim agrupamentos de países ou regiões) 
+# e que estão presentes no dataset como registros especiais
 
-REGIOES_AGREGADAS = [
+REGIOES_AGREGADAS : Final[List[str]] = [
     "World", "Asia", "Europe", "Africa", "North America",
     "South America", "Oceania", "European Union",
     "High income", "Low income", "Lower middle income",
@@ -72,10 +66,13 @@ REGIOES_AGREGADAS = [
 
 
 # =============================================================================
-#                    MÓDULO 1 — CRIAÇÃO DA SPARK SESSION
+#                         CRIAÇÃO DA SPARK SESSION
 # =============================================================================
 
-def criar_spark_session(nome_app: str = "EDA_COVID19") -> SparkSession:
+def criar_spark_session(
+        nome_app: str = "EDA_COVID19"
+    ) -> SparkSession:
+    
     """
     Cria e retorna uma SparkSession configurada para execução local
 
@@ -85,12 +82,13 @@ def criar_spark_session(nome_app: str = "EDA_COVID19") -> SparkSession:
     Returns:
         SparkSession: Sessão inicializada
     """
+
     spark = (
         SparkSession.builder
         .appName(nome_app)
-        # Usa todas as cores disponíveis localmente
+        # usa todas as cores disponíveis localmente
         .master("local[*]")
-        # Reduz logs grandes durante a execução
+        # "evita" logs grandes durante a execução
         .config("spark.sql.shuffle.partitions", "8")
         .config("spark.driver.memory", "2g")
         .getOrCreate()
@@ -99,3 +97,35 @@ def criar_spark_session(nome_app: str = "EDA_COVID19") -> SparkSession:
     spark.sparkContext.setLogLevel("ERROR")
     return spark
 
+
+# =============================================================================
+#                           EXTRAÇÃO
+# =============================================================================
+
+def extrair_dados(
+        spark: SparkSession, 
+        caminho: str
+    ) -> DataFrame:
+
+    """
+    Lê o CSV do dataset COVID-19 com inferência de schema
+
+    Args:
+        spark (SparkSession): Sessão Spark ativa.
+        caminho (str): Caminho para o arquivo CSV.
+
+    Returns:
+        DataFrame: Dataset >bruto< carregado
+    """
+
+    df = (
+        spark.read
+        .option("header", "true")
+        .option("inferSchema", "true")
+        .option("dateFormat", "yyyy-MM-dd")
+        .csv(caminho)
+    )
+
+    # 'date' como DataType
+    df = df.withColumn("date", F.to_date(F.col("date"), "yyyy-MM-dd"))
+    return df
