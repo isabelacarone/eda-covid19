@@ -303,7 +303,7 @@ def adicionar_media_movel(
     # usa unix_date() que retorna dias desde 1970-01-01 como IntegerType 
     # optimize: nao sei se isso ta da melhor maneira, admito que foi confuso e fomos de IA
     # convem analisar melhor 
-    
+
     window_spec = (
         Window
         .partitionBy("country")
@@ -312,3 +312,204 @@ def adicionar_media_movel(
     )
 
     return df.withColumn(nome_saida, F.avg(F.col(coluna)).over(window_spec))
+
+
+
+# =============================================================================
+#                                   AGREGAÇÕES
+# =============================================================================
+
+def agregar_por_pais(df):
+    """
+    Sumariza métricas totais por país
+
+    Args:
+        df: DataFrame PySpark limpo.
+
+    Returns:
+        DataFrame: Uma linha por país com métricas agregadas.
+    """
+    return (
+        df
+        .groupBy("country", "continent", "population",
+                 "gdp_per_capita", "median_age",
+                 "life_expectancy", "human_development_index")
+        .agg(
+            F.max("total_cases").alias("total_cases"),
+            F.max("total_deaths").alias("total_deaths"),
+            F.max("people_fully_vaccinated").alias("people_fully_vaccinated"),
+            F.avg("stringency_index").alias("avg_stringency_index"),
+            F.avg("reproduction_rate").alias("avg_reproduction_rate"),
+            F.count("date").alias("days_recorded"),
+        )
+        .withColumn(
+            "case_fatality_rate",
+            F.when(
+                F.col("total_cases") > 0,
+                (F.col("total_deaths") / F.col("total_cases") * 100)
+            ).otherwise(F.lit(None))
+        )
+        .withColumn(
+            "total_cases_per_million",
+            F.when(
+                F.col("population") > 0,
+                (F.col("total_cases") / F.col("population") * 1_000_000)
+            ).otherwise(F.lit(None))
+        )
+        .withColumn(
+            "total_deaths_per_million",
+            F.when(
+                F.col("population") > 0,
+                (F.col("total_deaths") / F.col("population") * 1_000_000)
+            ).otherwise(F.lit(None))
+        )
+    )
+
+
+def agregar_mensal_global(df):
+    """
+    Agrega novos casos e mortes por mês em nível global
+
+    Args:
+        df: DataFrame PySpark
+
+    Returns:
+        DataFrame: Uma linha por mês com totais globais
+    """
+    return (
+        df
+        .groupBy("year_month")
+        .agg(
+            F.sum("new_cases").alias("global_new_cases"),
+            F.sum("new_deaths").alias("global_new_deaths"),
+            F.avg("reproduction_rate").alias("avg_reproduction_rate"),
+        )
+        .orderBy("year_month")
+    )
+
+
+def agregar_por_continente(df):
+    """
+    Sumariza totais por continente.
+
+    Args:
+        df: DataFrame PySpark
+
+    Returns:
+        DataFrame: Uma linha por continente
+    """
+    return (
+        df
+        .groupBy("continent")
+        .agg(
+            F.max("total_cases").alias("total_cases"),
+            F.max("total_deaths").alias("total_deaths"),
+            F.avg("fully_vaccinated_pct").alias("avg_fully_vaccinated_pct"),
+            F.avg("stringency_index").alias("avg_stringency_index"),
+        )
+        .orderBy(F.col("total_cases").desc())
+    )
+
+
+# =============================================================================
+#                                  LOAD
+# =============================================================================
+
+def salvar_resultado(
+        df,
+        caminho: str, 
+        nome: str, 
+        formato: str = "csv"
+    ) -> None:
+    """
+    Salva um DataFrame Spark em disco no formato especificado
+
+    Args:
+        df: DataFrame PySpark a salvar
+        caminho (str): Diretório de saída
+        nome (str): Subdiretório/nome do arquivo
+        formato (str): Formato de saída 
+    """
+    destino = os.path.join(caminho, nome)
+    (
+        df.coalesce(1)   # Gera um único arquivo de saída
+        .write
+        .mode("overwrite")
+        .option("header", "true")
+        .format(formato)
+        .save(destino)
+    )
+    print(f"  Salvo em: {destino}")
+
+if __name__ == "__main__":
+    spark = criar_spark_session()
+
+
+    #                             EXTRACT
+
+    print("\n" + "=" * 60)
+    print("INICIANDO PIPELINE ETL: COVID-19")
+    print("=" * 60 + "\n")
+
+    df_bruto = extrair_dados(spark, CAMINHO_DADOS)
+    exibir_visao_geral(df_bruto)
+    analisar_nulos(df_bruto)
+
+
+    #                           TRANSFORM
+ 
+    df_limpo = transformar_dados(df_bruto)
+
+    # Adiciona médias móveis de 7 dias para casos e mortes
+    df_completo = adicionar_media_movel(df_limpo, "new_cases", 7)
+    df_completo = adicionar_media_movel(df_completo, "new_deaths", 7)
+
+    print("=" * 60)
+    print("prévia dataset transformado")
+    print("=" * 60)
+    df_completo.select(
+        "country", "date", "new_cases", "new_cases_ma7",
+        "new_deaths", "new_deaths_ma7", "year_month"
+    ).orderBy("country", "date").show(10, truncate=False)
+
+
+    #                           AGREGAÇÕES
+ 
+    print("=" * 60)
+    print("top 10 países por total de casos")
+    print("=" * 60)
+    df_por_pais = agregar_por_pais(df_completo)
+    df_por_pais.orderBy(F.col("total_cases").desc()).show(10, truncate=False)
+
+    print("=" * 60)
+    print("top 10 países por total de casos")
+    print("=" * 60)
+    df_por_pais = agregar_por_pais(df_completo)
+    df_por_pais.orderBy(F.col("total_cases").desc()).show(10, truncate=False)
+
+    print("=" * 60)
+    print("totais por continente")
+    print("=" * 60)
+    agregar_por_continente(df_completo).show(truncate=False)
+
+    print("=" * 60)
+    print("evolução mensal global")
+    print("=" * 60)
+    agregar_mensal_global(df_completo).show(50, truncate=False)
+
+
+    #                               LOAD
+   
+    print("=" * 60)
+    print("salvando resultados processados...")
+    print("=" * 60)
+    os.makedirs(CAMINHO_SAIDA, exist_ok=True)
+    salvar_resultado(df_por_pais, CAMINHO_SAIDA, "resumo_por_pais")
+    salvar_resultado(agregar_mensal_global(df_completo), CAMINHO_SAIDA, "evolucao_mensal_global")
+    salvar_resultado(agregar_por_continente(df_completo), CAMINHO_SAIDA, "resumo_por_continente")
+
+    print("\n" + "=" * 60)
+    print("pipeline concluída com sucesso \o/ ")
+    print("=" * 60 + "\n")
+
+    spark.stop()
