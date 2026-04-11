@@ -148,7 +148,7 @@ def exibir_visao_geral(df) -> None:
     ).select("continent").distinct().count()
 
     print("=" * 60)
-    print("ETAPA 1 — Visão Geral do Dataset")
+    print("visão geral do dataset")
     print("=" * 60)
     print(f"  Linhas        : {total_linhas:,}")
     print(f"  Colunas       : {total_colunas}")
@@ -159,4 +159,156 @@ def exibir_visao_geral(df) -> None:
     print("Schema:")
     df.printSchema()
 
-print(exibir_visao_geral(extrair_dados(criar_spark_session(), CAMINHO_DADOS)))
+# =============================================================================
+#                   ANÁLISE DE QUALIDADE (nulos, negativos)
+# =============================================================================
+
+def analisar_nulos(df) -> None:
+    """
+    Calcula e exibe a proporção de valores nulos nas colunas principais.
+
+    Args:
+        df: DataFrame PySpark.
+    """
+    colunas_interesse = [
+        "total_cases", "new_cases", "total_deaths", "new_deaths",
+        "total_vaccinations", "people_fully_vaccinated",
+        "hosp_patients", "icu_patients", "stringency_index",
+        "reproduction_rate", "continent", "population",
+    ]
+
+    print("=" * 60)
+    print("análises dos valores nulos em todas as colunas")
+    print("=" * 60)
+
+    total = df.count()
+    # realiza a expressão de contagem de nulos para todas as colunas de uma vez só
+    exprs_nulos = [
+        F.sum(F.col(c).isNull().cast("int")).alias(c)
+        for c in colunas_interesse
+    ]
+    resultado = df.agg(*exprs_nulos).collect()[0].asDict()
+
+    for coluna, qtd_nulos in sorted(resultado.items(), key=lambda x: -x[1]):
+        pct = qtd_nulos / total * 100
+        print(f"  {coluna:<45}: {qtd_nulos:>8,}  ({pct:5.1f}%)")
+    print()
+
+# =============================================================================
+#                               TRANSFORMAÇÃO
+# =============================================================================
+
+def transformar_dados(df):
+    """
+    Aplica limpeza e enriquecimento ao dataset bruto:
+      - Remove registros de regiões/agregações (não países)
+      - Remove valores negativos inválidos
+      - Preenche nulos numéricos com 0 onde apropriado
+      - Cria colunas derivadas: year_month, mortality_rate, cases_per_100k
+
+    Args:
+        df: DataFrame PySpark bruto.
+
+    Returns:
+        DataFrame: Dataset limpo e enriquecido.
+    """
+    print("=" * 60)
+    print("transformação dos dados")
+    print("=" * 60)
+
+    # Remove regiões agregadas e mantém apenas países individuais
+    df_paises = df.filter(F.col("continent").isNotNull())
+    print(f"  Registros após remover regiões: {df_paises.count():,}")
+
+    # Remove registros com valores negativos (erro de notificação)
+    df_limpo = (
+        df_paises
+        .filter(
+            (F.col("new_cases").isNull()) | (F.col("new_cases") >= 0)
+        )
+        .filter(
+            (F.col("new_deaths").isNull()) | (F.col("new_deaths") >= 0)
+        )
+    )
+    print(f"  Registros após remover negativos: {df_limpo.count():,}")
+
+    # Colunas derivadas
+    df_enriquecido = (
+        df_limpo
+        # periodo mensaal
+        .withColumn(
+            "year_month",
+            F.date_format(F.col("date"), "yyyy-MM")
+        )
+        # ano
+        .withColumn("year", F.year(F.col("date")))
+        # taxa de mortalidade diária (mortes / casos * 100)
+        .withColumn(
+            "daily_mortality_rate",
+            F.when(
+                (F.col("new_cases") > 0) & F.col("new_deaths").isNotNull(),
+                (F.col("new_deaths") / F.col("new_cases") * 100).cast("double")
+            ).otherwise(F.lit(None))
+        )
+        # casos por 100 mil habitantes
+        .withColumn(
+            "new_cases_per_100k",
+            F.when(
+                (F.col("population") > 0) & F.col("new_cases").isNotNull(),
+                (F.col("new_cases") / F.col("population") * 100_000).cast("double")
+            ).otherwise(F.lit(None))
+        )
+        # proporção de vacinados (dose completa / população)
+        .withColumn(
+            "fully_vaccinated_pct",
+            F.when(
+                (F.col("population") > 0) & F.col("people_fully_vaccinated").isNotNull(),
+                (F.col("people_fully_vaccinated") / F.col("population") * 100).cast("double")
+            ).otherwise(F.lit(None))
+        )
+    )
+
+    print("Colunas adicionadas: year_month, year, daily_mortality_rate, new_cases_per_100k, fully_vaccinated_pct")
+    print()
+    return df_enriquecido
+
+# =============================================================================
+#                           'WINDOW FUNCTION'
+# =============================================================================
+
+def adicionar_media_movel(
+        df, 
+        coluna: str = "new_cases",
+        janela: int = 7
+     ) -> DataFrame:
+    """
+    Calcula a média móvel de uma coluna numérica particionada por país.
+
+    Equivalente Spark:
+        windowSpec = Window.partitionBy("country").orderBy("date")
+                          .rowsBetween(-(janela-1), 0)
+        df.withColumn("moving_avg", avg(coluna).over(windowSpec))
+
+    Args:
+        df: DataFrame PySpark com coluna 'country' e 'date'.
+        coluna (str): Coluna numérica para calcular a média.
+        janela (int): Tamanho da janela em dias.
+
+    Returns:
+        DataFrame: Com coluna adicional '{coluna}_ma{janela}'.
+    """
+    nome_saida = f"{coluna}_ma{janela}"
+
+    # Spark 4.x não permite cast direto de DateType para BIGINT;
+    # usa unix_date() que retorna dias desde 1970-01-01 como IntegerType 
+    # optimize: nao sei se isso ta da melhor maneira, admito que foi confuso e fomos de IA
+    # convem analisar melhor 
+    
+    window_spec = (
+        Window
+        .partitionBy("country")
+        .orderBy(F.unix_date(F.col("date")))
+        .rowsBetween(-(janela - 1), 0)
+    )
+
+    return df.withColumn(nome_saida, F.avg(F.col(coluna)).over(window_spec))
