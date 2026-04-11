@@ -61,7 +61,7 @@ python src/main.py
 
 ```bash
 # Com venv ativo
-jupyter notebook notebook/main.ipynb
+jupyter notebook notebook/notebook.ipynb
 # ou
 jupyter lab
 ```
@@ -81,7 +81,7 @@ wget -O data/owid-covid.csv "https://catalog.ourworldindata.org/garden/covid/lat
 ```
 eda-covid-19/
 ├── notebook/
-│   └── main.ipynb          # Análise exploratória 
+│   └── notebook.ipynb      # Análise exploratória 
 ├── src/
 │   └── main.py             # Pipeline ETL completo com PySpark
 ├── data/
