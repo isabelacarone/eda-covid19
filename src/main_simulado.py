@@ -1,27 +1,24 @@
 """
 =============================================================================
-SIMULAÇÃO DO APACHE SPARK EM PYTHON PURO — EDA COVID-19
+PROJETO EDA COVID-19: PIPELINE ETL COM APACHE SPARK (PySpark)
 Dataset: COVID-19 (Our World in Data)
-Curso: Processamento de Grande Volume de Dados — UVV
 =============================================================================
 
+
 Este arquivo implementa uma simulação simplificada dos principais conceitos
-do Apache Spark, usando apenas Python, Pandas e NumPy — sem nenhuma
-dependência do PySpark.
+do Apache Spark, usando apenas Python, Pandas e Numpy, não possuindo NENHUMA
+ligação com PySpark.
 
 CONCEITOS SIMULADOS:
-  1. RDD             — Resilient Distributed Dataset com partições em memória
-  2. Map / Filter    — transformações elemento a elemento sobre partições
-  3. ReduceByKey     — agregação por chave (coração do MapReduce)
-  4. DataFrame API   — groupBy, agg, filter, withColumn, select, orderBy
-  5. Column          — expressões de coluna tipadas (operadores, null-checks)
-  6. Window Function — média móvel por partição ordenada por data
-  7. SparkSession    — ponto de entrada único que orquestra tudo
-  8. Lazy Evaluation — transformações registradas; execução adiada para ação
+  1. RDD             : Resilient Distributed Dataset com partições em memória
+  2. Map / Filter    : transformações elemento a elemento sobre partições
+  3. ReduceByKey     : agregação por chave (coração do MapReduce)
+  4. DataFrame API   : groupBy, agg, filter, withColumn, select, orderBy
+  5. Column          : expressões de coluna tipadas (operadores, null-checks)
+  6. Window Function : média móvel por partição ordenada por data
+  7. SparkSession    : ponto de entrada único que orquestra tudo
+  8. Lazy Evaluation : transformações registradas; execução adiada para ação
 
-ESTRUTURA DO ARQUIVO:
-  Parte 1 (linhas ~40-380)  — Engine de simulação (classes reutilizáveis)
-  Parte 2 (linhas ~380-fim) — Pipeline ETL aplicado ao dataset COVID-19
 """
 
 import os
@@ -37,42 +34,44 @@ import pandas as pd
 # =============================================================================
 
 
-#                             caminhos do projeto
+#                             Caminhos do projeto
 
 
 ROOT_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CAMINHO_CSV = os.path.join(ROOT_DIR, "data", "owid-covid.csv")
 CAMINHO_SAIDA = os.path.join(ROOT_DIR, "data", "processado_sim")
 
-# protect: garante que qualquer valor vire uma Column 
+# protect e garante que valor "nome da coluna" vire objeto
 
 def _to_col(x):
     """
     Converte uma string (nome de coluna) ou valor literal em um objeto Column.
-    Permite escrever F.sum("new_cases") ou F.sum(F.col("new_cases")) com o
-    mesmo resultado — como no PySpark real.
+
+    Essa função utilitária garante que tanto F.sum("new_cases") quanto
+    F.sum(F.col("new_cases")) produzam o mesmo resultado, tal como ocorre
+    no PySpark padrão. Valores literais são encapsulados em uma Series
+    de comprimento fixo para compatibilidade com as operações vetoriais.
     """
     if isinstance(x, (Column, WhenBuilder)):
         return x
     if isinstance(x, str):
-        # Captura 'x' por valor com argumento default para evitar closure tardio
         return Column(lambda df, _n=x: df[_n], x)
     val = x
     return Column(lambda df, _v=val: pd.Series([_v] * len(df), index=df.index), str(val))
 
 
-# =============================================================================
-# SEÇÃO 1.1 — COLUMN: expressões de coluna
-# =============================================================================
+#                             Expressões da coluna
+
 
 class Column:
     """
-    Representa uma expressão de coluna — análogo ao pyspark.sql.Column.
+    Representa uma expressão de coluna, com funcionamento análogo ao
+    pyspark.sql.Column.
 
-    Internamente armazena uma função (eval_fn) que recebe um DataFrame
-    pandas e retorna uma pandas Series com o resultado da expressão.
-    Esse padrão simula a avaliação preguiçosa (lazy evaluation) do Spark:
-    a expressão só é calculada quando realmente necessário.
+    Internamente, armazena uma função (eval_fn) que recebe um DataFrame
+    Pandas e retorna uma Pandas Series com o resultado da expressão.
+    Esse padrão reproduz o conceito de lazy evaluation do Spark: a expressão
+    só é avaliada quando uma ação é disparada, não no momento da definição.
     """
 
     def __init__(self, eval_fn, name="expr"):
@@ -84,23 +83,29 @@ class Column:
         return self._eval_fn(df)
 
     def alias(self, name: str) -> "Column":
-        """Renomeia o resultado — equivalente ao .alias() do PySpark."""
+        """Renomeia o resultado da expressão, com comportamento equivalente ao .alias() do PySpark."""
         return Column(self._eval_fn, name)
 
     def cast(self, dtype: str) -> "Column":
-        """Converte o tipo da coluna — equivalente ao .cast() do PySpark."""
+        """
+        Converte o tipo da coluna para o dtype especificado, com comportamento
+        equivalente ao .cast() do PySpark.
+
+        Suporta os tipos: double, float, int, integer, bigint, long e string.
+        Valores inválidos são convertidos para NaN (coerce).
+        """
         def _cast(df, _self=self):
-            s = _self.evaluate(df)
+            serie = _self.evaluate(df)
             if dtype in ("double", "float"):
-                return pd.to_numeric(s, errors="coerce")
+                return pd.to_numeric(serie, errors="coerce")
             if dtype in ("int", "integer", "bigint", "long"):
-                return pd.to_numeric(s, errors="coerce")
+                return pd.to_numeric(serie, errors="coerce")
             if dtype == "string":
-                return s.astype(str)
-            return s
+                return serie.astype(str)
+            return serie
         return Column(_cast, f"CAST({self._name} AS {dtype})")
 
-    # os valores podems ser...
+    # os valores podem ser nulos ou não nulos
     def isNull(self) -> "Column":
         return Column(lambda df, _s=self: _s.evaluate(df).isna(),
                       f"isnull({self._name})")
@@ -117,62 +122,62 @@ class Column:
 
     # operadores aritméticos
     def __add__(self, other):
-        o = _to_col(other)
-        return Column(lambda df, _a=self, _b=o: _a.evaluate(df) + _b.evaluate(df),
-                      f"({self._name}+{o._name})")
+        outra_col = _to_col(other)
+        return Column(lambda df, _a=self, _b=outra_col: _a.evaluate(df) + _b.evaluate(df),
+                      f"({self._name}+{outra_col._name})")
 
     def __radd__(self, other):
         return _to_col(other).__add__(self)
 
     def __sub__(self, other):
-        o = _to_col(other)
-        return Column(lambda df, _a=self, _b=o: _a.evaluate(df) - _b.evaluate(df),
-                      f"({self._name}-{o._name})")
+        outra_col = _to_col(other)
+        return Column(lambda df, _a=self, _b=outra_col: _a.evaluate(df) - _b.evaluate(df),
+                      f"({self._name}-{outra_col._name})")
 
     def __mul__(self, other):
-        o = _to_col(other)
-        return Column(lambda df, _a=self, _b=o: _a.evaluate(df) * _b.evaluate(df),
-                      f"({self._name}*{o._name})")
+        outra_col = _to_col(other)
+        return Column(lambda df, _a=self, _b=outra_col: _a.evaluate(df) * _b.evaluate(df),
+                      f"({self._name}*{outra_col._name})")
 
     def __rmul__(self, other):
         return _to_col(other).__mul__(self)
 
     def __truediv__(self, other):
-        o = _to_col(other)
-        return Column(lambda df, _a=self, _b=o: _a.evaluate(df) / _b.evaluate(df),
-                      f"({self._name}/{o._name})")
+        outra_col = _to_col(other)
+        return Column(lambda df, _a=self, _b=outra_col: _a.evaluate(df) / _b.evaluate(df),
+                      f"({self._name}/{outra_col._name})")
     # fim
 
     # operadores de comparação
     def __gt__(self, other):
-        o = _to_col(other)
-        return Column(lambda df, _a=self, _b=o: _a.evaluate(df) > _b.evaluate(df),
-                      f"({self._name}>{o._name})")
+        outra_col = _to_col(other)
+        return Column(lambda df, _a=self, _b=outra_col: _a.evaluate(df) > _b.evaluate(df),
+                      f"({self._name}>{outra_col._name})")
 
     def __ge__(self, other):
-        o = _to_col(other)
-        return Column(lambda df, _a=self, _b=o: _a.evaluate(df) >= _b.evaluate(df),
-                      f"({self._name}>={o._name})")
+        outra_col = _to_col(other)
+        return Column(lambda df, _a=self, _b=outra_col: _a.evaluate(df) >= _b.evaluate(df),
+                      f"({self._name}>={outra_col._name})")
 
     def __lt__(self, other):
-        o = _to_col(other)
-        return Column(lambda df, _a=self, _b=o: _a.evaluate(df) < _b.evaluate(df),
-                      f"({self._name}<{o._name})")
+        outra_col = _to_col(other)
+        return Column(lambda df, _a=self, _b=outra_col: _a.evaluate(df) < _b.evaluate(df),
+                      f"({self._name}<{outra_col._name})")
 
     def __le__(self, other):
-        o = _to_col(other)
-        return Column(lambda df, _a=self, _b=o: _a.evaluate(df) <= _b.evaluate(df),
-                      f"({self._name}<={o._name})")
+        outra_col = _to_col(other)
+        return Column(lambda df, _a=self, _b=outra_col: _a.evaluate(df) <= _b.evaluate(df),
+                      f"({self._name}<={outra_col._name})")
 
     def __eq__(self, other):
-        o = _to_col(other)
-        return Column(lambda df, _a=self, _b=o: _a.evaluate(df) == _b.evaluate(df),
-                      f"({self._name}=={o._name})")
+        outra_col = _to_col(other)
+        return Column(lambda df, _a=self, _b=outra_col: _a.evaluate(df) == _b.evaluate(df),
+                      f"({self._name}=={outra_col._name})")
 
     def __ne__(self, other):
-        o = _to_col(other)
-        return Column(lambda df, _a=self, _b=o: _a.evaluate(df) != _b.evaluate(df),
-                      f"({self._name}!={o._name})")
+        outra_col = _to_col(other)
+        return Column(lambda df, _a=self, _b=outra_col: _a.evaluate(df) != _b.evaluate(df),
+                      f"({self._name}!={outra_col._name})")
     # fim
 
     # operadores booleanos
@@ -192,16 +197,18 @@ class Column:
     # fim
 
 
-#                           expressões de agregação
+#                           Expressões de agregação
 
 
 class AggExpr:
     """
-    Expressão de agregação (sum, avg, max, min, count, etc.) — análoga a
-    F.sum("col").alias("total") no PySpark.
+    Representa uma expressão de agregação (sum, avg, max, min, count, etc.),
+    com funcionamento análogo a F.sum("col").alias("total") no PySpark.
 
-    Usada dentro de GroupedData.agg() para calcular a agregação
-    correspondente sobre um pandas GroupBy.
+    Usada dentro de GroupedData.agg() para calcular a função de agregação
+    correspondente sobre um pandas GroupBy. O padrão de encapsulamento permite
+    que a expressão seja construída de forma declarativa e executada apenas
+    quando necessário, simulando o planejamento de execução do Spark.
     """
 
     def __init__(self, func_name: str, col, alias_name: str = None, **kwargs):
@@ -218,14 +225,19 @@ class AggExpr:
         return f"AggExpr({nome})"
 
 
-# 
-#                       expressões condicionais (when/otherwise)
-# 
+#
+#                       Expressões condicionais (when/otherwise)
+#
 
 class WhenBuilder:
     """
-    Constrói uma expressão condicional encadeada — análoga ao
+    Constrói uma expressão condicional encadeada, com funcionamento análogo ao
     F.when(cond, val).when(cond2, val2).otherwise(default) do PySpark.
+
+    O padrão de construção por encadeamento (method chaining) segue o mesmo
+    estilo fluente da API do Spark, permitindo compor múltiplas condições de
+    forma legível. A avaliação é sempre lazy: o resultado só é computado quando
+    evaluate() é invocado sobre um DataFrame concreto.
     """
 
     def __init__(self, condition, value):
@@ -246,7 +258,13 @@ class WhenBuilder:
         return Column(self.evaluate, name)
 
     def evaluate(self, df: pd.DataFrame) -> pd.Series:
-        """Avalia a expressão condicional sobre um DataFrame pandas."""
+        """
+        Avalia a expressão condicional sobre um DataFrame pandas.
+
+        Percorre as branches em ordem de definição; a primeira condição
+        satisfeita determina o valor do resultado. Posições ainda não
+        preenchidas recebem o valor do otherwise, se definido.
+        """
         result = pd.Series([np.nan] * len(df), index=df.index, dtype="float64")
         # Percorre as branches em ordem; a primeira que satisfaz vence
         for condition, value_col in self._branches:
@@ -265,22 +283,34 @@ class WhenBuilder:
         return f"WhenBuilder({len(self._branches)} branches)"
 
 
-# =============================================================================
-# SEÇÃO 1.4 — WINDOW FUNCTION
-# =============================================================================
+
+#                           'Windows Functions'
+
 
 class WindowSpec:
     """
-    Especificação de janela para funções analíticas — análoga ao
+    Especificação de janela para funções analíticas, com funcionamento análogo ao
     Window.partitionBy(...).orderBy(...).rowsBetween(...) do PySpark.
+
+    Uma window function opera sobre um subconjunto de linhas definido pela
+    partição e pelo intervalo de linhas (rows between). Ao contrário do groupBy,
+    que colapsa as linhas em uma única linha por grupo, a window function preserva
+    todas as linhas e adiciona o resultado da agregação como uma nova coluna.
     """
 
-    def __init__(self, partition_cols=None, order_cols=None,
-                 rows_start=None, rows_end=None):
+    def __init__(
+            self, 
+            partition_cols = None, 
+            order_cols = None,
+            rows_start=None, 
+            rows_end = None
+        ):
+
         self.partition_cols = partition_cols or []
+
         # Armazena os nomes E as expressões de ordenação separadamente.
         # As expressões são necessárias quando orderBy recebe um Column
-        # (ex: F.unix_date(F.col("date"))) que precisa ser avaliado antes do sort.
+
         order_items = order_cols or []
         self.order_cols      = [c if isinstance(c, str) else c._name
                                  for c in order_items]
@@ -302,8 +332,12 @@ class WindowSpec:
 
 class Window:
     """
-    Ponto de entrada para criar especificações de janela —
-    análogo ao pyspark.sql.Window.
+    Ponto de entrada estático para criar especificações de janela,
+    com funcionamento análogo ao pyspark.sql.Window.
+
+    No Spark, o conceito de janela deslizante (sliding window) é fundamental
+    para calcular métricas como médias móveis e rankings sem perder o
+    detalhamento por linha.
     """
 
     @staticmethod
@@ -314,9 +348,12 @@ class Window:
 
 class WindowColumn:
     """
-    Coluna com função de janela — resultado de agg_expr.over(window_spec).
-    Armazena a expressão de agregação e a especificação de janela;
-    o cálculo real é feito dentro de SimulatedDataFrame.withColumn().
+    Coluna resultante de uma função de janela, gerada por agg_expr.over(window_spec).
+
+    Armazena a expressão de agregação e a especificação de janela; o cálculo
+    real é realizado dentro de SimulatedDataFrame.withColumn(). Esse adiamento
+    do cálculo reproduz o comportamento do Spark, que só executa a window
+    function no momento em que uma ação é disparada.
     """
 
     def __init__(self, agg_expr: AggExpr, window_spec: WindowSpec):
@@ -331,10 +368,12 @@ class WindowColumn:
 
     def _compute(self, df: pd.DataFrame) -> pd.Series:
         """
-        Calcula a função de janela usando pandas groupby + rolling.
-        Simula o comportamento do Window.partitionBy().orderBy().rowsBetween()
-        do Spark: para cada grupo (partição), ordena por data e aplica a
-        janela deslizante.
+        Calcula a função de janela usando pandas groupby combinado com rolling.
+
+        Reproduz o comportamento do Window.partitionBy().orderBy().rowsBetween()
+        do Spark: para cada grupo (partição), os dados são ordenados pela coluna
+        de ordenação e a janela deslizante é aplicada sobre os valores resultantes.
+        O tamanho da janela é derivado do intervalo rows_start..rows_end.
         """
         agg   = self.agg_expr
         spec  = self.window_spec
@@ -394,25 +433,34 @@ class WindowColumn:
         return result
 
 
-# =============================================================================
-# SEÇÃO 1.5 — GROUPEDDATA: resultado do groupBy()
-# =============================================================================
+#                               Saída do group by
+
 
 class GroupedData:
     """
-    DataFrame agrupado — análogo ao GroupedData do PySpark.
-    Criado por SimulatedDataFrame.groupBy() e consumido por .agg().
+    Representa um DataFrame agrupado, com funcionamento análogo ao GroupedData do PySpark.
+
+    É criado por SimulatedDataFrame.groupBy() e consumido por .agg(). O design
+    segue o padrão fluente do Spark: groupBy() retorna um GroupedData, sobre o
+    qual as expressões de agregação são aplicadas de forma independente e depois
+    unidas via merge, simulando o plano de execução paralelo do framework.
     """
 
-    def __init__(self, pdf: pd.DataFrame, group_cols: list):
+    def __init__(self, 
+        pdf: pd.DataFrame, 
+        group_cols: list
+    ):
         self._pdf        = pdf
         self.group_cols  = group_cols
 
     def agg(self, *exprs) -> "SimulatedDataFrame":
         """
         Aplica as expressões de agregação e retorna um novo SimulatedDataFrame.
-        Cada AggExpr é computada de forma independente e os resultados são
-        unidos pelo merge — simula o plano de execução paralelo do Spark.
+
+        Cada AggExpr é computada de forma independente sobre o pandas GroupBy
+        e os resultados são unidos via merge sobre as chaves de agrupamento.
+        Esse processo reproduz o plano de execução do Spark, onde diferentes
+        estágios de agregação podem ser paralelizados entre os executores.
         """
         pdf = self._pdf.copy()
 
@@ -431,7 +479,7 @@ class GroupedData:
                            f")")
             col = expr.col
 
-            # Resolve a coluna: string → usa direto; Column → avalia e cria temp
+            # Resolve a coluna: string usa diretamente; Column avalia e cria coluna temporária
             if col is None:
                 col_name = "__count_star__"
                 pdf[col_name] = 1
@@ -458,8 +506,8 @@ class GroupedData:
             elif expr.func_name == "countDistinct":
                 agg_result = grp.nunique()
             elif expr.func_name == "percentile":
-                p = expr.kwargs.get("p", 0.5)
-                agg_result = grp.quantile(p)
+                percentil = expr.kwargs.get("p", 0.5)
+                agg_result = grp.quantile(percentil)
             else:
                 continue
 
@@ -469,40 +517,46 @@ class GroupedData:
         return SimulatedDataFrame(result)
 
 
-# =============================================================================
-# SEÇÃO 1.6 — SIMULATED DATAFRAME: API de alto nível
-# =============================================================================
+
+#               Simulação do dataframe (pyspark.sql.DataFrame)
+
 
 class SimulatedDataFrame:
     """
-    DataFrame distribuído simulado — análogo ao pyspark.sql.DataFrame.
+    Representa um DataFrame distribuído simulado, com funcionamento análogo ao
+    pyspark.sql.DataFrame.
 
-    Internamente usa um pandas DataFrame (_pdf) para armazenar os dados,
+    Internamente utiliza um pandas DataFrame (_pdf) para armazenar os dados,
     mas expõe a mesma API do PySpark: filter, select, withColumn, groupBy,
-    orderBy, show, printSchema, count, toPandas, cache.
-
-    Simula o comportamento "imutável" do Spark: cada transformação retorna
-    um NOVO SimulatedDataFrame, sem modificar o original.
+    orderBy, show, printSchema, count, toPandas e cache. Segue o princípio de
+    imutabilidade do Spark: cada transformação retorna um novo SimulatedDataFrame
+    sem modificar o objeto original, o que garante rastreabilidade e segurança
+    nas transformações encadeadas.
     """
 
     def __init__(self, pdf: pd.DataFrame):
         self._pdf     = pdf.reset_index(drop=True)
         self._cached  = False
 
-    # ── Transformações (retornam novo SimulatedDataFrame) ──────────────────
+    # Transformações (retornam novo SimulatedDataFrame)
 
     def filter(self, condition) -> "SimulatedDataFrame":
         """
-        Filtra linhas — equivalente ao .filter() / .where() do PySpark.
-        A condição pode ser um Column booleano ou um WhenBuilder.
+        Filtra linhas do DataFrame conforme uma condição booleana, com
+        comportamento equivalente ao .filter() / .where() do PySpark.
+
+        A condição pode ser um objeto Column booleano ou um WhenBuilder.
+        Retorna um novo SimulatedDataFrame contendo apenas as linhas que
+        satisfazem a condição, preservando o DataFrame original.
         """
         mask = condition.evaluate(self._pdf)
         return SimulatedDataFrame(self._pdf[mask].copy())
 
     def select(self, *cols) -> "SimulatedDataFrame":
         """
-        Seleciona colunas — equivalente ao .select() do PySpark.
-        Aceita strings (nomes de colunas) ou objetos Column.
+        Seleciona um subconjunto de colunas, com comportamento equivalente ao
+        .select() do PySpark. Aceita strings (nomes de colunas) ou objetos Column,
+        permitindo projeções com expressões derivadas além de simples seleções.
         """
         result = {}
         for c in cols:
@@ -514,8 +568,9 @@ class SimulatedDataFrame:
 
     def withColumn(self, name: str, col) -> "SimulatedDataFrame":
         """
-        Adiciona ou substitui uma coluna — equivalente ao .withColumn() do PySpark.
-        Aceita Column, WhenBuilder, ou WindowColumn.
+        Adiciona ou substitui uma coluna no DataFrame, com comportamento
+        equivalente ao .withColumn() do PySpark. Aceita Column, WhenBuilder
+        ou WindowColumn como expressão da nova coluna.
         """
         new_pdf = self._pdf.copy()
         if isinstance(col, WindowColumn):
@@ -528,15 +583,17 @@ class SimulatedDataFrame:
 
     def groupBy(self, *cols) -> GroupedData:
         """
-        Agrupa o DataFrame pelas colunas especificadas —
-        equivalente ao .groupBy() do PySpark. Retorna um GroupedData.
+        Agrupa o DataFrame pelas colunas especificadas, com comportamento
+        equivalente ao .groupBy() do PySpark. Retorna um objeto GroupedData
+        sobre o qual expressões de agregação podem ser aplicadas via .agg().
         """
         group_cols = list(cols)
         return GroupedData(self._pdf, group_cols)
 
     def orderBy(self, *cols, ascending=True) -> "SimulatedDataFrame":
         """
-        Ordena o DataFrame — equivalente ao .orderBy() / .sort() do PySpark.
+        Ordena o DataFrame pelas colunas especificadas, com comportamento
+        equivalente ao .orderBy() / .sort() do PySpark.
         """
         col_names = []
         asc_list  = []
@@ -555,22 +612,27 @@ class SimulatedDataFrame:
 
     def cache(self) -> "SimulatedDataFrame":
         """
-        No Spark, persiste o DataFrame em memória para reutilização.
-        Nesta simulação é um no-op — pandas já mantém tudo em memória.
+        No Spark real, persiste o DataFrame em memória distribuída para
+        reutilização eficiente em múltiplas ações. Nesta simulação é um
+        no-op, pois pandas já mantém todos os dados em memória local.
         """
         self._cached = True
         print("  [cache] DataFrame marcado como cached (no-op na simulação)")
         return self
 
-    # ── Ações (executam e retornam resultado) ──────────────────────────────
+    # Ações (executam e retornam resultado)
 
     def count(self) -> int:
-        """Conta o número de linhas — equivalente ao .count() do PySpark."""
+        """Conta o número de linhas, com comportamento equivalente ao .count() do PySpark."""
         return len(self._pdf)
 
-    def show(self, n: int = 20, truncate: bool = True) -> None:
+    def show(self, 
+            n: int = 20,
+            truncate: bool = True
+        ) -> None:
         """
-        Exibe as primeiras n linhas — equivalente ao .show() do PySpark.
+        Exibe as primeiras n linhas em formato tabular, com comportamento
+        equivalente ao .show() do PySpark.
         """
         pdf = self._pdf.head(n)
         col_width = 20 if truncate else 40
@@ -588,7 +650,7 @@ class SimulatedDataFrame:
         print(f"apenas exibindo {min(n, len(self._pdf))} de {len(self._pdf)} linhas\n")
 
     def printSchema(self) -> None:
-        """Exibe o schema (tipos das colunas) — equivalente ao .printSchema() do PySpark."""
+        """Exibe o schema (tipos das colunas), com comportamento equivalente ao .printSchema() do PySpark."""
         print("root")
         for col, dtype in self._pdf.dtypes.items():
             print(f" |-- {col}: {dtype} (nullable = true)")
@@ -598,7 +660,7 @@ class SimulatedDataFrame:
         return self._pdf.to_dict(orient="records")
 
     def agg(self, *exprs) -> "SimulatedDataFrame":
-        """Agrega todo o DataFrame sem agrupamento."""
+        """Agrega todo o DataFrame sem agrupamento prévio."""
         result = {}
         for expr in exprs:
             if not isinstance(expr, AggExpr):
@@ -606,66 +668,72 @@ class SimulatedDataFrame:
             out_name = expr._alias or expr.func_name
             col = expr.col
             if isinstance(col, str):
-                s = self._pdf[col]
+                serie = self._pdf[col]
             elif isinstance(col, Column):
-                s = col.evaluate(self._pdf)
+                serie = col.evaluate(self._pdf)
             else:
                 continue
             if expr.func_name in ("min", "max"):
-                result[out_name] = [getattr(s, expr.func_name)()]
+                result[out_name] = [getattr(serie, expr.func_name)()]
             elif expr.func_name == "countDistinct":
-                result[out_name] = [s.nunique()]
+                result[out_name] = [serie.nunique()]
             elif expr.func_name == "count":
-                result[out_name] = [s.count()]
+                result[out_name] = [serie.count()]
         return SimulatedDataFrame(pd.DataFrame(result))
 
     def toPandas(self) -> pd.DataFrame:
-        """Converte para pandas DataFrame — equivalente ao .toPandas() do PySpark."""
+        """Converte para pandas DataFrame, com comportamento equivalente ao .toPandas() do PySpark."""
         return self._pdf.copy()
 
     def __repr__(self):
-        return (f"SimulatedDataFrame[{len(self._pdf)} linhas × "
+        return (f"SimulatedDataFrame[{len(self._pdf)} linhas x "
                 f"{len(self._pdf.columns)} colunas]")
 
 
-# =============================================================================
-# SEÇÃO 1.7 — RDD: processamento de baixo nível (MapReduce)
-# =============================================================================
+#                   RDD - processamento de baixo nível (MapReduce)
+
 
 class RDD:
     """
     Resilient Distributed Dataset (RDD) simulado.
 
     No Spark real, um RDD é uma coleção imutável de dados distribuída entre
-    os nós do cluster em partições. Aqui simulamos esse comportamento
-    dividindo os dados em listas Python (as "partições").
+    os nós do cluster em partições. O conceito de resiliência se refere à
+    capacidade de recomputar partições perdidas a partir do grafo de linhagem
+    (lineage). Aqui, esse comportamento é simulado dividindo os dados em
+    listas Python que representam as partições.
 
     Operações suportadas:
-      .map(func)         — transforma cada elemento (fase MAP)
-      .filter(func)      — filtra elementos por condição
-      .flatMap(func)     — map + achatamento da lista resultante
-      .reduceByKey(func) — agrega por chave (fase REDUCE / shuffle)
-      .collect()         — coleta todos os dados das partições
-      .count()           — conta o total de elementos
-      .take(n)           — retorna os primeiros n elementos
+      .map(func)         : transforma cada elemento (fase MAP)
+      .filter(func)      : filtra elementos por condição
+      .flatMap(func)     : map seguido de achatamento da lista resultante
+      .reduceByKey(func) : agrega por chave (fase REDUCE / shuffle)
+      .collect()         : coleta todos os dados das partições
+      .count()           : conta o total de elementos
+      .take(n)           : retorna os primeiros n elementos
     """
 
-    def __init__(self, data: list, num_partitions: int = 4):
+    def __init__(self,
+        data: list, 
+        num_partitions: int = 4
+        ):
         """
-        Cria o RDD dividindo 'data' em 'num_partitions' partições.
-        Simula a distribuição de dados entre nós do cluster.
+        Cria o RDD dividindo a coleção 'data' em 'num_partitions' partições.
+        Simula a distribuição dos dados entre nós do cluster.
         """
-        n    = len(data)
-        size = max(1, math.ceil(n / num_partitions))
+        total = len(data)
+        size = max(1, math.ceil(total / num_partitions))
         self.partitions     = [data[i * size:(i + 1) * size]
                                 for i in range(num_partitions)]
         self.num_partitions = num_partitions
 
     def map(self, func) -> "RDD":
         """
-        FASE MAP — aplica func a cada elemento de cada partição.
-        Simula o processamento paralelo: cada partição seria processada
-        por um executor diferente no cluster real.
+        Fase MAP: aplica func a cada elemento de cada partição.
+
+        Simula o processamento paralelo do modelo MapReduce: no cluster real,
+        cada partição seria processada por um executor diferente de forma
+        independente. O resultado é um novo RDD com os elementos transformados.
         """
         novos = []
         for particao in self.partitions:
@@ -673,14 +741,18 @@ class RDD:
         return RDD(novos, self.num_partitions)
 
     def filter(self, func) -> "RDD":
-        """Filtra elementos que satisfazem a condição em cada partição."""
+        """Filtra os elementos que satisfazem a condição em cada partição."""
         filtrados = []
         for particao in self.partitions:
             filtrados.extend([item for item in particao if func(item)])
         return RDD(filtrados, self.num_partitions)
 
     def flatMap(self, func) -> "RDD":
-        """map + achata listas aninhadas — útil para tokenização, por exemplo."""
+        """
+        Aplica map seguido do achatamento das listas resultantes.
+        Útil para tokenização e outros cenários onde cada elemento
+        pode gerar múltiplos elementos de saída.
+        """
         resultado = []
         for particao in self.partitions:
             for item in particao:
@@ -689,15 +761,15 @@ class RDD:
 
     def reduceByKey(self, func) -> dict:
         """
-        FASE REDUCE — agrupa por chave e aplica a função de redução.
+        Fase REDUCE: agrupa por chave e aplica a função de redução.
 
-        Simula o fluxo completo do MapReduce:
+        Simula o fluxo completo do MapReduce em três etapas:
           1. SHUFFLE: redistribui os pares (chave, valor) por chave
           2. SORT   : ordena por chave dentro de cada grupo
           3. REDUCE : aplica func para colapsar os valores de cada chave
 
-        No Spark real, o shuffle move dados entre executores pela rede —
-        a operação mais custosa do MapReduce.
+        No Spark real, a etapa de shuffle envolve transferência de dados
+        entre executores pela rede, sendo a operação mais custosa do ciclo.
         """
         # 1. Shuffle: agrupa os valores por chave
         grupos = defaultdict(list)
@@ -720,7 +792,7 @@ class RDD:
         return sum(len(p) for p in self.partitions)
 
     def take(self, n: int) -> list:
-        """Retorna os primeiros n elementos (sem coletar tudo em memória)."""
+        """Retorna os primeiros n elementos sem coletar tudo em memória."""
         resultado = []
         for particao in self.partitions:
             for item in particao:
@@ -730,17 +802,21 @@ class RDD:
         return resultado
 
     def __repr__(self):
-        return f"SimulatedRDD[{self.count()} registros em {self.num_partitions} partições]"
+        return f"SimulatedRDD[{self.count()} registros em {self.num_partitions} particoes]"
 
 
-# =============================================================================
-# SEÇÃO 1.8 — SPARKCONTEXT e SPARKSESSION
-# =============================================================================
+
+#                          SPARKCONTEXT e SPARKSESSION
+
 
 class SimulatedSparkContext:
     """
-    SparkContext simulado — ponto de entrada para operações de baixo nível (RDD).
-    No Spark real gerencia a conexão com o cluster e o agendamento de jobs.
+    SparkContext simulado, ponto de entrada para operações de baixo nível (RDD).
+
+    No Spark real, o SparkContext gerencia a conexão com o cluster, o
+    agendamento de jobs e a alocação de recursos entre os executores.
+    Nesta simulação, serve como interface para criar RDDs a partir de
+    coleções Python locais.
     """
 
     def __init__(self, master: str = "local[*]", app_name: str = "SimulatedSpark"):
@@ -751,7 +827,7 @@ class SimulatedSparkContext:
     def parallelize(self, data: list, num_slices: int = 4) -> RDD:
         """
         Distribui uma coleção Python em um RDD com num_slices partições.
-        Equivalente ao sc.parallelize() do PySpark.
+        Implementa o mesmo comportamento de sc.parallelize() do PySpark.
         """
         return RDD(data, num_slices)
 
@@ -761,11 +837,12 @@ class SimulatedSparkContext:
 
 class SimulatedSparkSession:
     """
-    SparkSession simulada — ponto de entrada unificado para toda aplicação Spark.
+    SparkSession simulada, ponto de entrada unificado para toda a aplicação Spark.
 
     No Spark real, a SparkSession encapsula SparkContext, SQLContext e
-    HiveContext. Aqui ela gerencia a leitura de dados (via pandas) e expõe
-    o SparkContext para operações RDD.
+    HiveContext em uma única interface de alto nível, introduzida no Spark 2.0
+    para simplificar a API. Nesta simulação, ela gerencia a leitura de dados
+    via pandas e expõe o SparkContext para operações RDD de baixo nível.
 
     Uso idêntico ao PySpark:
         spark = SimulatedSparkSession.builder \\
@@ -800,11 +877,10 @@ class SimulatedSparkSession:
         self.sparkContext = SimulatedSparkContext(master, app_name)
         self.version      = "4.1.1-simulado"
         print(f"\n{'='*60}")
-        print(f"  SimulatedSparkSession iniciada")
-        print(f"  Versão  : {self.version}")
+        print("  SimulatedSparkSession iniciada")
+        print(f"  Versao  : {self.version}")
         print(f"  Master  : {master}")
         print(f"  App     : {app_name}")
-        print(f"{'='*60}\n")
 
     class _Reader:
         def __init__(self, session):
@@ -813,9 +889,10 @@ class SimulatedSparkSession:
         def csv(self, path: str, header: bool = True,
                 inferSchema: bool = True) -> SimulatedDataFrame:
             """
-            Lê um CSV com pandas e retorna um SimulatedDataFrame.
-            Simula o spark.read.csv() — em um cluster real, o Spark
-            leria diferentes blocos do arquivo em diferentes executores.
+            Lê um arquivo CSV com pandas e retorna um SimulatedDataFrame.
+            Reproduz o comportamento de spark.read.csv(): em um cluster real,
+            o Spark leria blocos distintos do arquivo em executores paralelos,
+            distribuindo a carga de I/O entre os nós.
             """
             pdf = pd.read_csv(path)
             return SimulatedDataFrame(pdf)
@@ -828,27 +905,31 @@ class SimulatedSparkSession:
         print("\nSimulatedSparkSession encerrada.\n")
 
 
-# =============================================================================
-# SEÇÃO 1.9 — F: namespace de funções (espelho de pyspark.sql.functions)
-# =============================================================================
+
+#          F - namespace de funções (espelho de pyspark.sql.functions)
+
 
 class F:
     """
-    Funções de coluna — espelho simplificado de pyspark.sql.functions.
-    Cada método retorna um Column (ou AggExpr) que encapsula a operação.
+    Namespace de funções de coluna, implementando um espelho simplificado do
+    módulo pyspark.sql.functions.
+
+    Cada método retorna um Column ou AggExpr que encapsula a operação de forma
+    lazy. O padrão de uso (F.sum, F.avg, F.col, etc.) é idêntico ao do PySpark,
+    o que permite migrar o código para o framework real com poucas alterações.
     """
 
     @staticmethod
     def col(name: str) -> Column:
-        """Referência a uma coluna pelo nome."""
+        """Cria uma referência a uma coluna pelo nome."""
         return Column(lambda df, _n=name: df[_n], name)
 
     @staticmethod
     def lit(value) -> Column:
-        """Valor literal (constante)."""
+        """Cria uma coluna de valor literal (constante)."""
         return Column(lambda df, _v=value: pd.Series([_v] * len(df), index=df.index), str(value))
 
-    # ── Funções de data ──────────────────────────────────────────────────────
+    # Funções de data
 
     @staticmethod
     def to_date(col, fmt: str = None) -> Column:
@@ -865,37 +946,44 @@ class F:
 
     @staticmethod
     def date_format(col, fmt: str) -> Column:
-        """Formata data para string — converte formato Java (yyyy-MM) para Python (%Y-%m)."""
+        """
+        Formata uma coluna de data para string conforme o padrão especificado.
+        Converte o formato Java (yyyy-MM-dd) para o equivalente Python (%Y-%m-%d).
+        """
         col  = _to_col(col)
         py_fmt = (fmt.replace("yyyy", "%Y").replace("MM", "%m")
                       .replace("dd", "%d").replace("HH", "%H"))
         def _eval(df, _c=col, _f=py_fmt):
-            s = _c.evaluate(df)
-            if hasattr(s, "dt"):
-                return s.dt.strftime(_f)
-            return pd.to_datetime(s, errors="coerce").dt.strftime(_f)
+            serie = _c.evaluate(df)
+            if hasattr(serie, "dt"):
+                return serie.dt.strftime(_f)
+            return pd.to_datetime(serie, errors="coerce").dt.strftime(_f)
         return Column(_eval, f"date_format({col._name}, {fmt})")
 
     @staticmethod
     def unix_date(col) -> Column:
-        """Dias desde 1970-01-01 — substituto de cast('long') no Spark 4.x."""
+        """
+        Retorna o número de dias desde 1970-01-01 (epoch Unix) para cada data.
+        Funciona como substituto do cast('long') no Spark 4.x para ordenação
+        numérica de datas em window functions.
+        """
         col = _to_col(col)
         epoch = pd.Timestamp("1970-01-01")
         def _eval(df, _c=col, _e=epoch):
-            s = _c.evaluate(df)
-            if not pd.api.types.is_datetime64_any_dtype(s):
-                s = pd.to_datetime(s, errors="coerce")
-            return (s - _e).dt.days
+            serie = _c.evaluate(df)
+            if not pd.api.types.is_datetime64_any_dtype(serie):
+                serie = pd.to_datetime(serie, errors="coerce")
+            return (serie - _e).dt.days
         return Column(_eval, f"unix_date({col._name})")
 
-    # ── Funções de controle de fluxo ─────────────────────────────────────────
+    # Funções de controle de fluxo
 
     @staticmethod
     def when(condition, value) -> WhenBuilder:
         """Inicia uma expressão condicional encadeada."""
         return WhenBuilder(condition, value)
 
-    # ── Funções de agregação ─────────────────────────────────────────────────
+    # Funções de agregação
 
     @staticmethod
     def sum(col) -> AggExpr:
@@ -927,7 +1015,7 @@ class F:
     def percentile_approx(col, p: float) -> AggExpr:
         return AggExpr("percentile", _to_col(col) if not isinstance(col, str) else col, p=p)
 
-    # ── Funções escalares extras ─────────────────────────────────────────────
+    # Funções escalares extras
 
     @staticmethod
     def abs(col) -> Column:
@@ -935,16 +1023,17 @@ class F:
         return Column(lambda df, _c=col: _c.evaluate(df).abs(), f"abs({col._name})")
 
 
-# Atalho para usar AggExpr.over(window_spec) — igual ao PySpark
+# Atalho para usar AggExpr.over(window_spec), com comportamento idêntico ao PySpark
 def _agg_over(self, window_spec: WindowSpec) -> WindowColumn:
     return WindowColumn(self, window_spec)
 
 AggExpr.over = _agg_over
 
+# ==============================================================================================
 
-# =============================================================================
-# PARTE 2 — PIPELINE ETL APLICADO AO DATASET COVID-19
-# =============================================================================
+
+#               pipeline ETL no dataset (isso que queríamos desde o início!!)
+
 
 # Regiões que o OWID inclui como agregações (não são países individuais)
 REGIOES_AGREGADAS = [
@@ -956,7 +1045,7 @@ REGIOES_AGREGADAS = [
 
 
 def criar_sessao() -> SimulatedSparkSession:
-    """Inicializa a SparkSession simulada."""
+    """Inicializa e retorna a SparkSession simulada com as configurações padrão do projeto."""
     return (
         SimulatedSparkSession.builder
         .appName("EDA_COVID19_Simulado")
@@ -968,8 +1057,12 @@ def criar_sessao() -> SimulatedSparkSession:
 
 def extrair(spark: SimulatedSparkSession, caminho: str) -> SimulatedDataFrame:
     """
-    EXTRACT — lê o CSV e converte a coluna date para DateType.
-    Simula o spark.read.option("header","true").inferSchema(true).csv().
+    Etapa EXTRACT da pipeline ETL: lê o arquivo CSV e prepara os tipos de dados.
+
+    Reproduz o comportamento de spark.read.option("header","true")
+    .inferSchema(true).csv(). A coluna 'date' é convertida para datetime e
+    as colunas numéricas principais são coercidas para evitar problemas de
+    tipo em operações subsequentes.
     """
     df = spark.read.csv(caminho)
     # Converte date para datetime e colunas numéricas
@@ -985,15 +1078,15 @@ def extrair(spark: SimulatedSparkSession, caminho: str) -> SimulatedDataFrame:
 
 
 def exibir_visao_geral(df: SimulatedDataFrame) -> None:
-    """Etapa 1 — exibe estatísticas básicas do dataset bruto."""
+    """Etapa 1: exibe estatísticas básicas do dataset bruto para uma visão inicial dos dados."""
     pdf = df._pdf
     print("=" * 60)
-    print("ETAPA 1 — Visão Geral do Dataset")
+    print("Visão geral do dataset")
     print("=" * 60)
     print(f"  Linhas      : {df.count():,}")
     print(f"  Colunas     : {len(pdf.columns)}")
-    print(f"  Países      : {pdf['country'].nunique()}")
-    print(f"  Período     : {pdf['date'].min().date()} → {pdf['date'].max().date()}")
+    print(f"  Paises      : {pdf['country'].nunique()}")
+    print(f"  Periodo     : {pdf['date'].min().date()} a {pdf['date'].max().date()}")
     print(f"  Continentes : {pdf['continent'].dropna().nunique()}")
     print()
     df.printSchema()
@@ -1001,11 +1094,11 @@ def exibir_visao_geral(df: SimulatedDataFrame) -> None:
 
 def demonstrar_rdd(df: SimulatedDataFrame, spark: SimulatedSparkSession) -> None:
     """
-    Etapa 2 — demonstra o modelo RDD (baixo nível) com MapReduce.
+    Etapa 2: demonstra o modelo RDD (baixo nível) com MapReduce.
     Mostra as fases MAP, SHUFFLE e REDUCE aplicadas ao dataset de COVID.
     """
     print("=" * 60)
-    print("ETAPA 2 — Pipeline MapReduce (RDD — baixo nível)")
+    print("Pipeline MapReduce (RDD - baixo nivel)")
     print("=" * 60)
 
     # Converte o DataFrame para lista de registros (simula RDD de linhas)
@@ -1015,14 +1108,14 @@ def demonstrar_rdd(df: SimulatedDataFrame, spark: SimulatedSparkSession) -> None
     print(f"\n  RDD criado: {rdd_covid}")
 
     # FASE MAP: extrai (país, novos_casos) de cada registro
-    print("\n  [MAP] Extraindo pares (país, novos_casos)...")
+    print("\n  [MAP] Extraindo pares (pais, novos_casos)...")
     rdd_pares = rdd_covid.map(
         lambda r: (r["country"], r["new_cases"] if pd.notna(r["new_cases"]) else 0)
     )
     print(f"  Exemplo de pares: {rdd_pares.take(3)}")
 
     # FASE REDUCE: soma casos por país
-    print("\n  [SHUFFLE + REDUCE] Somando casos por país...")
+    print("\n  [SHUFFLE + REDUCE] Somando casos por pais...")
     total_por_pais = rdd_pares.reduceByKey(lambda valores: sum(valores))
     top5 = sorted(total_por_pais.items(), key=lambda x: -x[1])[:5]
     for pais, total in top5:
@@ -1037,7 +1130,7 @@ def demonstrar_rdd(df: SimulatedDataFrame, spark: SimulatedSparkSession) -> None
 
 
 def analisar_nulos(df: SimulatedDataFrame) -> None:
-    """Etapa 3 — calcula e exibe a proporção de nulos nas colunas principais."""
+    """Calcula e exibe a proporção de valores nulos nas colunas principais."""
     pdf = df._pdf
     total = len(pdf)
     colunas = [
@@ -1046,28 +1139,32 @@ def analisar_nulos(df: SimulatedDataFrame) -> None:
         "stringency_index", "reproduction_rate",
     ]
     print("=" * 60)
-    print("ETAPA 3 — Qualidade dos Dados (valores nulos)")
+    print("Retirada dos valores nulos")
     print("=" * 60)
     for col in colunas:
         if col in pdf.columns:
-            n = pdf[col].isna().sum()
-            print(f"  {col:<40}: {n:>8,}  ({n/total*100:5.1f}%)")
+            qtd_nulos = pdf[col].isna().sum()
+            print(f"  {col:<40}: {qtd_nulos:>8,}  ({qtd_nulos/total*100:5.1f}%)")
     print()
 
 
 def transformar(df: SimulatedDataFrame) -> SimulatedDataFrame:
     """
-    TRANSFORM — limpeza e enriquecimento do dataset.
-    Aplica filtros e cria colunas derivadas usando a API DataFrame simulada.
+    Etapa TRANSFORM da pipeline ETL: limpeza e enriquecimento do dataset.
+
+    Aplica filtros para remover regiões agregadas e valores negativos,
+    e cria colunas derivadas usando a API DataFrame simulada. As colunas
+    derivadas (year_month, year, daily_mortality_rate, fully_vaccinated_pct)
+    enriquecem o dataset para suportar as análises exploratórias subsequentes.
     """
     print("=" * 60)
-    print("ETAPA 4 — Transformação (DataFrame API — alto nível)")
+    print("Transformação (DataFrame API - alto nivel)")
     print("=" * 60)
 
     # Remove regiões agregadas (mantém só países)
     df_paises = df.filter(F.col("continent").isNotNull())
     df_paises = df_paises.filter(~F.col("country").isin(*REGIOES_AGREGADAS))
-    print(f"  Após remover regiões : {df_paises.count():,}")
+    print(f"  Após remover regioes : {df_paises.count():,}")
 
     # Remove negativos
     df_limpo = df_paises.filter(
@@ -1076,7 +1173,7 @@ def transformar(df: SimulatedDataFrame) -> SimulatedDataFrame:
     df_limpo = df_limpo.filter(
         F.col("new_deaths").isNull().__or__(F.col("new_deaths") >= 0)
     )
-    print(f"  Após remover neg.    : {df_limpo.count():,}")
+    print(f"  Após remover neg.: {df_limpo.count():,}")
 
     # Colunas derivadas
     df_enr = (
@@ -1096,7 +1193,7 @@ def transformar(df: SimulatedDataFrame) -> SimulatedDataFrame:
                         F.col("people_fully_vaccinated") / F.col("population") * 100
                     ).otherwise(F.lit(None)))
     )
-    print("  Colunas adicionadas  : year_month, year, daily_mortality_rate, "
+    print("  Colunas adicionadas: year_month, year, daily_mortality_rate, "
           "fully_vaccinated_pct\n")
     return df_enr
 
@@ -1105,9 +1202,12 @@ def adicionar_media_movel(df: SimulatedDataFrame,
                           coluna: str = "new_cases",
                           janela: int = 7) -> SimulatedDataFrame:
     """
-    WINDOW FUNCTION — média móvel por país.
-    Simula o Window.partitionBy("country").orderBy("date").rowsBetween(-6,0)
-    do PySpark real.
+    Aplica uma média móvel por país usando Window Function.
+
+    Reproduz o comportamento de Window.partitionBy("country")
+    .orderBy("date").rowsBetween(-6, 0) do PySpark real. A coluna de data
+    é convertida para dias desde a epoch (unix_date) para garantir
+    ordenação numérica correta dentro de cada partição.
     """
     nome_saida  = f"{coluna}_ma{janela}"
     # Ordena por unix_date para garantir ordering numérico correto
@@ -1122,7 +1222,7 @@ def adicionar_media_movel(df: SimulatedDataFrame,
 
 
 def agregar_por_pais(df: SimulatedDataFrame) -> SimulatedDataFrame:
-    """agrega métricas totais por país."""
+    """Agrega as métricas totais por país ao longo de todo o período."""
     return (
         df
         .groupBy("country", "continent", "population",
@@ -1152,7 +1252,7 @@ def agregar_mensal_global(df: SimulatedDataFrame) -> SimulatedDataFrame:
 
 
 def agregar_por_continente(df: SimulatedDataFrame) -> SimulatedDataFrame:
-    """Agrega totais por continente."""
+    """Agrega os totais por continente."""
     return (
         df
         .groupBy("continent")
@@ -1167,17 +1267,18 @@ def agregar_por_continente(df: SimulatedDataFrame) -> SimulatedDataFrame:
 
 
 def salvar(df: SimulatedDataFrame, nome: str) -> None:
-    """LOAD — salva o resultado em CSV."""
+    """Etapa LOAD: salva o resultado em CSV no diretório de saída."""
     os.makedirs(CAMINHO_SAIDA, exist_ok=True)
     destino = os.path.join(CAMINHO_SAIDA, f"{nome}.csv")
     df._pdf.to_csv(destino, index=False)
     print(f"  Salvo: {destino}")
 
 
-
 #                                   execução prévia
 #                               depois simulacao.ipynb
 
+
+# ETL
 
 if __name__ == "__main__":
 
@@ -1187,7 +1288,7 @@ if __name__ == "__main__":
     df_bruto = extrair(spark, CAMINHO_CSV)
     exibir_visao_geral(df_bruto)
 
-    # ── RDD / MapReduce ────────────────────────────────────────────────────
+    # RDD / MapReduce
     demonstrar_rdd(df_bruto, spark)
     analisar_nulos(df_bruto)
 
@@ -1195,12 +1296,12 @@ if __name__ == "__main__":
     df_limpo = transformar(df_bruto)
 
     print("=" * 60)
-    print("ETAPA 5 — Window Function (Média Móvel 7 dias)")
+    print("Window Function (Média Movél 7 dias)")
     print("=" * 60)
     df_completo = adicionar_media_movel(df_limpo, "new_cases",  7)
     df_completo = adicionar_media_movel(df_completo, "new_deaths", 7)
 
-    print("  Amostra — Brasil, últimas 5 linhas:")
+    print(" Amostra do Brasil, últimas 5 linhas:")
     brasil = (df_completo._pdf[df_completo._pdf["country"] == "Brazil"]
               [["date", "new_cases", "new_cases_ma7", "new_deaths", "new_deaths_ma7"]]
               .dropna(subset=["new_cases"])
@@ -1210,7 +1311,7 @@ if __name__ == "__main__":
 
     # agregação
     print("=" * 60)
-    print("ETAPA 6 — Agregações (groupBy + agg)")
+    print("Agregações (groupBy + agg)")
     print("=" * 60)
 
     df_pais = agregar_por_pais(df_completo)
@@ -1225,16 +1326,16 @@ if __name__ == "__main__":
     df_cont = agregar_por_continente(df_completo)
     print(df_cont._pdf.to_string(index=False))
 
-    # ── LOAD ───────────────────────────────────────────────────────────────
+    # carrega
     print("\n" + "=" * 60)
-    print("ETAPA 7 — Carga (Load)")
+    print("Carga (Load)")
     print("=" * 60)
     salvar(df_pais,                     "resumo_por_pais_sim")
     salvar(agregar_mensal_global(df_completo), "evolucao_mensal_sim")
     salvar(agregar_por_continente(df_completo), "resumo_continente_sim")
 
     print("\n" + "=" * 60)
-    print("Pipeline simulado concluído com sucesso!")
+    print("Pronot, tudo deu certo pode relaxar")
     print("=" * 60)
 
     spark.stop()
