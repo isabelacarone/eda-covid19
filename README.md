@@ -115,8 +115,8 @@ eda-covid-19/
 ├── figuras/                    # Gráficos gerados pelos notebooks
 │   ├── *.png                   # Figuras do PySpark 
 │   └── *_sim.png               # Figuras da simulação
-├── DOCUMENTACAO.md             # Documentação de apoio, PySpark
-├── DOCUMENTACAO_SIMULACAO.md   # Documentação de apoio, simulação 
+├── documentacao.md             # Documentação de apoio, PySpark
+├── documentacao_simulacao.md   # Documentação de apoio, simulação 
 ├── .gitignore
 ├── venv/
 ├── requirements.txt
