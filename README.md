@@ -10,7 +10,7 @@ O projeto possui **duas implementações paralelas**:
 | Implementação | Arquivos | Descrição |
 |---|---|---|
 | **PySpark Real** | `src/main.py` + `notebook/main.ipynb` | Pipeline ETL e EDA com Apache Spark 4.1.1 + Java 21 |
-| **Simulação Python** | `src/simulacap.py` + `notebook/simulacao.ipynb` | Mesma análise implementando a engine do Spark do zero com pandas/numpy |
+| **Simulação Python** | `src/main_simulado.py` + `notebook/simulacao.ipynb` | Mesma análise implementando a engine do Spark do zero com pandas/numpy |
 
 ---
 
@@ -29,7 +29,7 @@ python -c "import jdk; jdk.install('21')"
 
 O código detecta o JDK automaticamente a partir dessa localização.
 
-> Já a  **simulação** (`simulacao.py` e `simulacao.ipynb`) **não precisa de Java**. Roda com Python puro.
+> A **simulação** (`main_simulado.py` e `simulacao.ipynb`) **não precisa de Java**. Roda com Python puro.
 
 ---
 
@@ -71,7 +71,7 @@ Saídas geradas em `data/processado/`.
 
 ```bash
 # Com venv ativo (não precisa de Java)
-python src/simulacao.py
+python src/main_simulado.py
 ```
 
 Saídas geradas em `data/processado_sim/`.
@@ -85,9 +85,8 @@ jupyter notebook
 jupyter lab
 ```
 
-- `notebook/main.ipynb` =>  EDA com PySpark
-- `notebook/simulacao.ipynb` => EDA com a simulação do Spark 
-
+- `notebook/main.ipynb`: EDA com PySpark 
+- `notebook/simulacao.ipynb`: EDA com a simulação do Spark 
 ### Fazer download do dataset original
 
 O dataset não está versionado no repositório (excede 100 MB). Faça o download antes de executar:
@@ -106,17 +105,17 @@ eda-covid-19/
 │   ├── main.ipynb              # EDA com PySpark 
 │   └── simulacao.ipynb         # EDA com simulação Python
 ├── src/
-│   ├── main.py                 # Pipeline ETL com PySpark rea?
-│   └── main_simulado.py        # Simulação do Spark em Python 
+│   ├── main.py                 # Pipeline ETL com PySpark real
+│   └── main_simulado.py        # Simulação do Spark em Python puro
 ├── data/
 │   ├── owid-covid.csv          # Dataset original (+100 MB)
 │   ├── processado/             # Saídas do pipeline PySpark real
 │   └── processado_sim/         # Saídas da simulação
 ├── figuras/                    # Gráficos gerados pelos notebooks
-│   ├── *.png                   # Figuras do PySpark 
-│   └── *_sim.png               # Figuras da simulação
-├── DOCUMENTACAO.md             # Documentação de apoio, PySpark
-├── DOCUMENTACAO_SIMULACAO.md   # Documentação de apoio, simulação 
+│   ├── *.png                   # 20 figuras do PySpark real
+│   └── *_sim.png               # 22 figuras da simulação
+├── DOCUMENTACAO.md             # Documentação técnica, PySpark real
+├── DOCUMENTACAO_SIMULACAO.md   # Documentação técnica, simulação Python
 ├── .gitignore
 ├── venv/
 ├── requirements.txt
