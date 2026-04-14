@@ -5,11 +5,11 @@
 
 EDA de dataset público, Our World in Data, com dados da COVID-19 utilizando Apache Spark e sua simulação para a disciplina de Processamento de Grande Volumes de Dados.
 
-O projeto possui **duas implementações paralelas**:
+O projeto possui **duas implementações**:
 
 | Implementação | Arquivos | Descrição |
 |---|---|---|
-| **PySpark Real** | `src/main.py` + `notebook/main.ipynb` | Pipeline ETL e EDA com Apache Spark 4.1.1 + Java 21 |
+| **PySpark** | `src/main.py` + `notebook/main.ipynb` | Pipeline ETL  |
 
 
 ---
@@ -67,26 +67,12 @@ python src/main.py
 
 Saídas geradas em `data/processado/`.
 
-### Como executar a simulação do Spark
-
-```bash
-# Com venv ativo (não precisa de Java)
-python src/simulacao.py
-```
-
-Saídas geradas em `data/processado_sim/`.
-
 ### Como executar os notebooks
 
 ```bash
 # Com venv ativo
 jupyter notebook
-# ou
-jupyter lab
 ```
-
-- `notebook/main.ipynb` =>  EDA com PySpark
-- `notebook/simulacao.ipynb` => EDA com a simulação do Spark 
 
 ### Fazer download do dataset original
 
