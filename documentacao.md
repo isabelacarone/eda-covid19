@@ -1,13 +1,4 @@
-# Documentação Técnica — EDA COVID-19 com Apache Spark (PySpark Real)
-
-**Disciplina:** Processamento de Grande Volume de Dados — UVV
-**Dataset:** Our World in Data — COVID-19 (~570 mil registros, 61 colunas)
-**Período coberto:** Janeiro/2020 → Fevereiro/2026
-**Implementação:** Apache Spark real via PySpark 4.1.1 + Java 21
-
-> Esta documentação cobre exclusivamente os arquivos que utilizam o **Apache Spark de verdade**:
-> `src/main.py` e `notebook/main.ipynb`.
-> Para a simulação em Python puro, consulte `DOCUMENTACAO_SIMULACAO.md`.
+# Documentação Técnica: EDA COVID-19 com Apache Spark
 
 ---
 
@@ -53,7 +44,7 @@ flowchart
 
 ---
 
-## 3. Pipeline ETL — `src/main.py`
+## 3. Pipeline ETL
 
 O arquivo implementa as três fases clássicas de processamento de dados:
 
@@ -63,39 +54,6 @@ flowchart LR
 ```
 
 ---
-
-### Configuração do Ambiente 
-
-```python
-# Auto-detecção do JAVA_HOME a partir do JDK instalado via install-jdk
-if not os.environ.get("JAVA_HOME"):
-    jdk_base = os.path.expanduser("~/.jdk")
-    ...
-    os.environ["JAVA_HOME"] = os.path.join(jdk_base, entradas[0])
-```
-
-O PySpark é uma biblioteca Python que, por baixo dos panos, inicia uma **JVM (Java Virtual Machine)** para executar o Spark. Sem o Java configurado, o programa não consegue iniciar.
-
-Usamos o pacote `install-jdk` para **embutir o Java como dependência Python**, eliminando a necessidade de instalar Java manualmente no sistema operacional.
-
-```mermaid
-sequenceDiagram
-    participant P as Python (pip)
-    participant J as install-jdk
-    participant D as ~/.jdk/jdk-21/
-    participant S as PySpark / JVM
-
-    P->>J: pip install install-jdk
-    P->>J: jdk.install('21')
-    J->>D: baixa e extrai OpenJDK 21 (~200 MB)
-    Note over D: salvo uma única vez
-    P->>D: os.environ["JAVA_HOME"] = ~/.jdk/jdk-21/
-    P->>S: SparkSession.builder.getOrCreate()
-    S->>D: lê JAVA_HOME → inicia JVM
-    S-->>P: SparkSession pronta
-```
-
-A `SparkSession` é o **ponto de entrada** de qualquer aplicação Spark. O padrão `builder.appName().master().getOrCreate()` cria ou reutiliza uma sessão existente.
 
 ---
 
@@ -111,7 +69,7 @@ df = (
 df = df.withColumn("date", F.to_date(F.col("date"), "yyyy-MM-dd"))
 ```
 
-O Spark lê o CSV de forma distribuída — internamente divide o arquivo em **partições** processadas em paralelo nos núcleos da CPU. `inferSchema` faz o Spark amostrar os dados para detectar tipos automaticamente.
+O Spark lê o CSV de forma distribuída (internamente divide o arquivo em **partições** processadas em paralelo nos núcleos da CPU,`inferSchema` faz o Spark amostrar os dados para detectar tipos automaticamente).
 
 **Resultado:** DataFrame com 570.606 linhas × 61 colunas, totalmente tipado.
 
@@ -134,7 +92,7 @@ Em vez de fazer uma query por coluna (61 queries), constrói **uma lista de expr
 | Coluna | % Nulos | Motivo |
 |---|---|---|
 | `icu_patients` | 93% | Poucos países reportam UTI diariamente |
-| `hosp_patients` | 93% | Idem — hospitalizações |
+| `hosp_patients` | 93% | Hospitalizações |
 | `people_fully_vaccinated` | 87% | Vacinação começou apenas em Dez/2020 |
 | `reproduction_rate` | 68% | Estimativa complexa, nem sempre calculada |
 | `new_cases` | 3% | Registros antes do início da pandemia |
@@ -178,25 +136,7 @@ window_spec = (
 df = df.withColumn("new_cases_ma7", F.avg("new_cases").over(window_spec))
 ```
 
-A Window Function calcula um valor para cada linha levando em conta **linhas vizinhas** — sem colapsar o DataFrame (diferente do `groupBy`).
-
-```mermaid
-gantt
-    title Janela deslizante de 7 dias , país Brasil
-    dateFormat YYYY-MM-DD
-    axisFormat %d/%m
-
-    section Dia 10 (resultado = média dos 7)
-    Dia 4  :done, d1, 2021-01-04, 1d
-    Dia 5  :done, d2, 2021-01-05, 1d
-    Dia 6  :done, d3, 2021-01-06, 1d
-    Dia 7  :done, d4, 2021-01-07, 1d
-    Dia 8  :done, d5, 2021-01-08, 1d
-    Dia 9  :done, d6, 2021-01-09, 1d
-    Dia 10 :active, d7, 2021-01-10, 1d
-```
-
-**`unix_date()` em vez de `.cast("long")`:** O Spark 4.x não permite converter `DateType` para `BIGINT`. A função `unix_date()` retorna dias desde 1970-01-01 como `IntegerType`, compatível com `Window.orderBy()`.
+A Window Function calcula um valor para cada linha levando em conta **linhas vizinhas** 
 
 ---
 
@@ -223,29 +163,5 @@ df.coalesce(1).write.mode("overwrite").option("header", "true").csv(destino)
 
 ---
 
-## 4. Notebook EDA — `notebook/main.ipynb`
-
-```mermaid
-flowchart TD
-    S1["Seção 1<br>Configuração e Extração<br>SparkSession + CSV"]
-    S2["Seção 2<br>Visão Geral<br>Schema + estatísticas"]
-    S3["Seção 3<br>Qualidade dos Dados<br>Gráfico de nulos"]
-    S4["Seção 4<br>Transformação<br>Window Function + cache"]
-    S5["Seção 5<br>Análise Global<br>Série temporal"]
-    S6["Seção 6<br>Top Países<br>Casos, mortes, por milhão"]
-    S7["Seção 7<br>Análise por Continente"]
-    S8["Seção 8<br>Vacinação Global"]
-    S9["Seção 9<br>Fatores Socioeconômicos<br>CFR, correlação, PIB"]
-    S10["Seção 10<br>Indicadores Epidemiológicos<br>Rt e índice de rigidez"]
-    S11["Seção 11<br>Análises Epidemiológicas<br>Curva epidêmica, incidência, CFR temporal, mortalidade/100k, Stringency vs Rt"]
-
-    S1 --> S2 --> S3 --> S4
-    S4 --> S5 --> S6 --> S7 --> S8 --> S9 --> S10 --> S11
-```
-
-**Por que `df.cache()`?**
-Após a transformação, o DataFrame é reutilizado em ~10 células. Sem cache, o Spark recalcularia toda a transformação a cada consulta. Com cache, armazena o resultado em memória após a primeira computação.
-
----
 
 
