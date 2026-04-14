@@ -104,19 +104,14 @@ wget -O data/owid-covid.csv "https://catalog.ourworldindata.org/garden/covid/lat
 eda-covid-19/
 ├── notebook/
 │   ├── main.ipynb              # EDA com PySpark 
-│   └── simulacao.ipynb         # EDA com simulação Python
 ├── src/
 │   ├── main.py                 # Pipeline ETL com PySpark rea?
-│   └── main_simulado.py        # Simulação do Spark em Python 
 ├── data/
 │   ├── owid-covid.csv          # Dataset original (+100 MB)
 │   ├── processado/             # Saídas do pipeline PySpark real
-│   └── processado_sim/         # Saídas da simulação
 ├── figuras/                    # Gráficos gerados pelos notebooks
 │   ├── *.png                   # Figuras do PySpark 
-│   └── *_sim.png               # Figuras da simulação
 ├── documentacao.md             # Documentação de apoio, PySpark
-├── documentacao_simulacao.md   # Documentação de apoio, simulação 
 ├── .gitignore
 ├── venv/
 ├── requirements.txt
