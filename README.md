@@ -105,6 +105,15 @@ eda-covid-19/
 └── README.md
 ```
 
+### Integrantes 
+SI6N
+
+- Gisela Medeiros
+- Isabela Carone 
+- Laiza Faqueri
+- Mateus Sarmento 
+- Sthefany Alves
+
 ### Referências
 
 - <https://spark.apache.org/docs/4.0.1/api/python/getting_started/index.html>
