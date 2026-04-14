@@ -120,7 +120,6 @@ eda-covid-19/
 ├── .gitignore
 ├── venv/
 ├── requirements.txt
-├── CLAUDE.md
 └── README.md
 ```
 
