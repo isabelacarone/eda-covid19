@@ -115,12 +115,11 @@ eda-covid-19/
 ├── figuras/                    # Gráficos gerados pelos notebooks
 │   ├── *.png                   # Figuras do PySpark 
 │   └── *_sim.png               # Figuras da simulação
-├── DOCUMENTACAO.md             # Documentação de apoio, PySpark
-├── DOCUMENTACAO_SIMULACAO.md   # Documentação de apoio, simulação 
+├── documentacao.md             # Documentação de apoio, PySpark
+├── documentacao_simulacao.md   # Documentação de apoio, simulação 
 ├── .gitignore
 ├── venv/
 ├── requirements.txt
-├── CLAUDE.md
 └── README.md
 ```
 
@@ -132,3 +131,4 @@ eda-covid-19/
 - <https://seaborn.pydata.org/tutorial.html>
 - <https://catalog.ourworldindata.org/garden/covid/latest/compact/compact.csv>
 - <https://pypi.org/project/install-jdk/>
+- <https://docs.owid.io/projects/etl/>
