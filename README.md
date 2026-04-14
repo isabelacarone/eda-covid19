@@ -5,12 +5,12 @@
 
 EDA de dataset público, Our World in Data, com dados da COVID-19 utilizando Apache Spark e sua simulação para a disciplina de Processamento de Grande Volumes de Dados.
 
-O projeto possui **duas implementações paralelas**:
+O projeto possui **duas implementações**:
 
 | Implementação | Arquivos | Descrição |
 |---|---|---|
-| **PySpark Real** | `src/main.py` + `notebook/main.ipynb` | Pipeline ETL e EDA com Apache Spark 4.1.1 + Java 21 |
-| **Simulação Python** | `src/simulacap.py` + `notebook/simulacao.ipynb` | Mesma análise implementando a engine do Spark do zero com pandas/numpy |
+| **PySpark** | `src/main.py` + `notebook/main.ipynb` | Pipeline ETL  |
+
 
 ---
 
@@ -67,26 +67,12 @@ python src/main.py
 
 Saídas geradas em `data/processado/`.
 
-### Como executar a simulação do Spark
-
-```bash
-# Com venv ativo (não precisa de Java)
-python src/simulacao.py
-```
-
-Saídas geradas em `data/processado_sim/`.
-
 ### Como executar os notebooks
 
 ```bash
 # Com venv ativo
 jupyter notebook
-# ou
-jupyter lab
 ```
-
-- `notebook/main.ipynb` =>  EDA com PySpark
-- `notebook/simulacao.ipynb` => EDA com a simulação do Spark 
 
 ### Fazer download do dataset original
 
@@ -104,24 +90,29 @@ wget -O data/owid-covid.csv "https://catalog.ourworldindata.org/garden/covid/lat
 eda-covid-19/
 ├── notebook/
 │   ├── main.ipynb              # EDA com PySpark 
-│   └── simulacao.ipynb         # EDA com simulação Python
 ├── src/
 │   ├── main.py                 # Pipeline ETL com PySpark rea?
-│   └── main_simulado.py        # Simulação do Spark em Python 
 ├── data/
 │   ├── owid-covid.csv          # Dataset original (+100 MB)
 │   ├── processado/             # Saídas do pipeline PySpark real
-│   └── processado_sim/         # Saídas da simulação
 ├── figuras/                    # Gráficos gerados pelos notebooks
 │   ├── *.png                   # Figuras do PySpark 
-│   └── *_sim.png               # Figuras da simulação
 ├── documentacao.md             # Documentação de apoio, PySpark
-├── documentacao_simulacao.md   # Documentação de apoio, simulação 
 ├── .gitignore
 ├── venv/
+├── slide/
 ├── requirements.txt
 └── README.md
 ```
+
+### Integrantes 
+SI6N
+
+- Gisela Medeiros
+- Isabela Carone 
+- Laiza Faqueri
+- Mateus Sarmento 
+- Sthefany Alves
 
 ### Referências
 
