@@ -100,6 +100,7 @@ eda-covid-19/
 ├── documentacao.md             # Documentação de apoio, PySpark
 ├── .gitignore
 ├── venv/
+├── slide/
 ├── requirements.txt
 └── README.md
 ```
