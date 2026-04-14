@@ -1,9 +1,9 @@
-# Projeto de Processamento de Grande Volumes de Dados - EDA COVID-19 com Apache Spark
+# Projeto de Processamento de Grande Volumes de Dados - *EDA COVID-19*
 ## Universidade de Vila Velha
 
 ## eda-covid-19
 
-EDA de dataset público, Our World in Data, com dados da COVID-19 utilizando Apache Spark para a disciplina de Processamento de Grande Volumes de Dados.
+EDA de dataset público, Our World in Data, com dados da COVID-19 utilizando Apache Spark e sua simulação para a disciplina de Processamento de Grande Volumes de Dados.
 
 O projeto possui **duas implementações paralelas**:
 
