@@ -132,3 +132,4 @@ eda-covid-19/
 - <https://seaborn.pydata.org/tutorial.html>
 - <https://catalog.ourworldindata.org/garden/covid/latest/compact/compact.csv>
 - <https://pypi.org/project/install-jdk/>
+- <https://docs.owid.io/projects/etl/>
