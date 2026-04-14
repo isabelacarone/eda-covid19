@@ -10,7 +10,7 @@ O projeto possui **duas implementações paralelas**:
 | Implementação | Arquivos | Descrição |
 |---|---|---|
 | **PySpark Real** | `src/main.py` + `notebook/main.ipynb` | Pipeline ETL e EDA com Apache Spark 4.1.1 + Java 21 |
-| **Simulação Python** | `src/simulacap.py` + `notebook/simulacao.ipynb` | Mesma análise implementando a engine do Spark do zero com pandas/numpy |
+
 
 ---
 
