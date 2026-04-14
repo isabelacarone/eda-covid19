@@ -11,54 +11,39 @@
 
 ---
 
-## Sumário
-
-1. [Visão Geral](#1-visão-geral)
-2. [Arquitetura e Fluxo de Dados](#2-arquitetura-e-fluxo-de-dados)
-3. [Pipeline ETL — `src/main.py`](#3-pipeline-etl--srcmainpy)
-4. [Notebook EDA — `notebook/main.ipynb`](#4-notebook-eda--notebookmainipynb)
-5. [As 15 Visualizações](#5-as-15-visualizações)
-6. [Conceitos de Big Data Aplicados](#6-conceitos-de-big-data-aplicados)
-7. [Guia de Apresentação em Sala](#7-guia-de-apresentação-em-sala)
-
----
-
-## 1. Visão Geral
+## Visão Geral
 
 O projeto realiza uma **Análise Exploratória de Dados (EDA)** sobre a pandemia de COVID-19 usando o **Apache Spark** (via PySpark) para processar um dataset de grande volume.
 
 | Arquivo | Papel |
 |---|---|
-| `src/main.py` | Pipeline ETL automatizado — extrai, transforma e exporta dados |
-| `notebook/main.ipynb` | Análise interativa com 15 visualizações |
-
-**Por que Spark e não Pandas?**
-Pandas carrega tudo em memória de uma única máquina. Spark processa em **partições distribuídas** — o mesmo código escala para bilhões de linhas em um cluster sem reescrever nada. Este projeto demonstra esse princípio com um dataset real.
+| `src/main.py` | Pipeline ETL |
+| `notebook/main.ipynb` | Análise interativa com visualizações |
 
 ---
 
 ## 2. Arquitetura e Fluxo de Dados
 
 ```mermaid
-flowchart LR
+flowchart 
 
-    subgraph ENTRADA["ENTRADA"]
-        A[("owid-covid.csv\n570 mil linhas\n61 colunas")]
+    subgraph ENTRADA["input"]
+        A[("owid-covid.csv")]
     end
 
-    subgraph SPARK["APACHE SPARK — PySpark 4.1.1"]
+    subgraph SPARK["APACHE SPARK, PySpark 4.1.1"]
         direction TB
         B["SparkSession\nlocal[*]"]
-        C["DataFrame Bruto\n(schema inferido)"]
-        D["Filtragem\n• remove regiões agregadas\n• remove valores negativos"]
-        E["Enriquecimento\n• year_month\n• daily_mortality_rate\n• fully_vaccinated_pct"]
-        F["Window Function\n• média móvel 7 dias\n• particionada por país"]
-        G["Agregações\n• por país\n• por continente\n• mensal global"]
+        C["DataFrame Bruto (schema inferido)"]
+        D["Filtragem: <br> remove regiões agregadas <br> remove valores negativos"]
+        E["Enriquecimento: <br> year_month <br> daily_mortality_rate <br> fully_vaccinated_pct"]
+        F["Window Function: <br> média móvel 7 dias <br> particionada por país"]
+        G["Agregações: <br> por país, por continente e mensal global"]
     end
 
-    subgraph SAIDA["SAÍDA"]
-        H[("data/processado/\nresumao_por_pais\nevol_mensal\ncont")]
-        I["notebook/main.ipynb\n15 visualizações"]
+    subgraph SAIDA["output"]
+        H[("data/processado/")]
+        I["notebook/main.ipynb"]
     end
 
     A --> B --> C --> D --> E --> F --> G
@@ -242,19 +227,20 @@ df.coalesce(1).write.mode("overwrite").option("header", "true").csv(destino)
 
 ```mermaid
 flowchart TD
-    S1["Seção 1\nConfiguração e Extração\nSparkSession + CSV"]
-    S2["Seção 2\nVisão Geral\nSchema + estatísticas"]
-    S3["Seção 3\nQualidade dos Dados\nGráfico de nulos"]
-    S4["Seção 4\nTransformação\nWindow Function + cache"]
-    S5["Seção 5\nAnálise Global\nSérie temporal"]
-    S6["Seção 6\nTop Países\nCasos, mortes, por milhão"]
-    S7["Seção 7\nAnálise por Continente"]
-    S8["Seção 8\nVacinação Global"]
-    S9["Seção 9\nFatores Socioeconômicos\nCFR, correlação, PIB"]
-    S10["Seção 10\nIndicadores Epidemiológicos\nRt e índice de rigidez"]
+    S1["Seção 1<br>Configuração e Extração<br>SparkSession + CSV"]
+    S2["Seção 2<br>Visão Geral<br>Schema + estatísticas"]
+    S3["Seção 3<br>Qualidade dos Dados<br>Gráfico de nulos"]
+    S4["Seção 4<br>Transformação<br>Window Function + cache"]
+    S5["Seção 5<br>Análise Global<br>Série temporal"]
+    S6["Seção 6<br>Top Países<br>Casos, mortes, por milhão"]
+    S7["Seção 7<br>Análise por Continente"]
+    S8["Seção 8<br>Vacinação Global"]
+    S9["Seção 9<br>Fatores Socioeconômicos<br>CFR, correlação, PIB"]
+    S10["Seção 10<br>Indicadores Epidemiológicos<br>Rt e índice de rigidez"]
+    S11["Seção 11<br>Análises Epidemiológicas<br>Curva epidêmica, incidência, CFR temporal, mortalidade/100k, Stringency vs Rt"]
 
     S1 --> S2 --> S3 --> S4
-    S4 --> S5 --> S6 --> S7 --> S8 --> S9 --> S10
+    S4 --> S5 --> S6 --> S7 --> S8 --> S9 --> S10 --> S11
 ```
 
 **Por que `df.cache()`?**
@@ -262,7 +248,7 @@ Após a transformação, o DataFrame é reutilizado em ~10 células. Sem cache, 
 
 ---
 
-## 5. As 15 Visualizações
+## 5. As 20 Visualizações
 
 ### Figura 01 — Proporção de Valores Nulos
 **Tipo:** Barras horizontais | **Código:** `F.col(c).isNull().cast("int")`
@@ -396,9 +382,64 @@ A linha vermelha em Rt = 1 é o **limiar crítico**. A faixa mostra variação e
 
 O Stringency Index (Oxford) é um índice de 0 a 100 que agrega: fechamento de escolas, comércio, eventos, restrições de viagem e obrigatoriedade de máscara.
 
-- Pico em Abril/2020 — lockdowns iniciais
+- Pico em Abril/2020: lockdowns iniciais
 - Redução progressiva ao longo de 2021-2022 com a vacinação
 - Ásia manteve restrições por mais tempo que outros continentes
+
+---
+
+### Figura 16 — Curva Epidêmica Semanal
+**Tipo:** Barras semanais com faixas coloridas por onda | **Arquivo:** `16_curva_epidemica.png`
+
+A curva epidêmica é a visualização mais clássica da epidemiologia: distribui os casos no tempo em intervalos regulares (aqui semanais) permitindo identificar o início, pico e declínio de cada onda. As faixas coloridas anotam as variantes predominantes em cada período.
+
+| Onda | Período | Variante predominante |
+|---|---|---|
+| 1ª Onda | Jan/2020 a Jun/2020 | Cepa original |
+| 2ª Onda | Jul/2020 a Fev/2021 | Alpha |
+| 3ª Onda | Mar/2021 a Set/2021 | Delta |
+| 4ª Onda | Out/2021 a Jun/2022 | Ômicron |
+| Transição | Jul/2022 em diante | Subvariantes / endemia |
+
+---
+
+### Figura 17 — Taxa de Incidência por 100 mil Habitantes
+**Tipo:** Linhas múltiplas por continente | **Arquivo:** `17_incidencia_100k.png`
+
+A taxa de incidência é o indicador epidemiológico padrão para medir a intensidade de transmissão normalizada pela população. Calculada via PySpark: `groupBy("continent", "year_month").agg(F.sum("new_cases"))` dividido pela população máxima do continente × 100.000.
+
+A diferença em relação ao total absoluto é fundamental: a Europa aparece com incidência muito maior que a Ásia, mesmo com população menor, revelando diferenças reais na propagação e não apenas no tamanho do país.
+
+---
+
+### Figura 18 — Coeficiente de Letalidade (CFR) Temporal
+**Tipo:** Área com linha + marcadores de eventos | **Arquivo:** `18_cfr_temporal.png`
+
+O CFR mensal é calculado como `F.sum("new_deaths") / F.sum("new_cases") * 100` agrupado por mês. Ao contrário do CFR estático por país, o CFR temporal mostra como a letalidade evoluiu ao longo da pandemia.
+
+O gráfico marca dois eventos-chave:
+- **Dezembro/2020:** início da vacinação em massa — CFR começa a cair
+- **Outubro/2021:** chegada do Ômicron — CFR cai ainda mais (variante mais transmissível, mas menos letal)
+
+Esta é a figura que mais claramente demonstra o impacto das vacinas e das variantes na mortalidade relativa.
+
+---
+
+### Figura 19 — Taxa de Mortalidade por 100 mil Habitantes
+**Tipo:** Barras horizontais, top 20 países | **Arquivo:** `19_mortalidade_100k.png`
+
+Diferente do CFR (que mede mortalidade entre os infectados), a taxa de mortalidade específica mede o impacto letal na população geral: `total_deaths / population * 100.000`. É o indicador que os sistemas de saúde pública usam para comparar o peso de doenças entre países.
+
+Países com sistemas de saúde precários ou populações vulneráveis (idosas, com comorbidades) aparecem no topo independente do total absoluto de casos.
+
+---
+
+### Figura 20 — Eficácia das Políticas: Stringency vs. Rt
+**Tipo:** Scatter por continente com linha de tendência | **Arquivo:** `20_stringency_vs_rt.png`
+
+Relaciona a rigidez das restrições governamentais (Stringency Index) com a transmissibilidade do vírus (Rt) mês a mês por continente. Calculado via PySpark: `groupBy("continent", "year_month").agg(F.avg("stringency_index"), F.avg("reproduction_rate"))`.
+
+O coeficiente de Pearson quantifica a força da correlação. A expectativa epidemiológica é de correlação negativa (mais restrições → menor Rt), mas o gráfico revela que a relação é mais complexa: há grande variação por continente e ao longo do tempo, refletindo diferenças na adesão populacional, capacidade de testagem e perfil das variantes.
 
 ---
 
@@ -492,14 +533,15 @@ timeline
                      : Extract-Transform-Load
                      : Demonstrar main.py rodando
     section 7-14 min
-        Visualizações : Fig 02 - ondas da pandemia
+        Visualizações : Fig 16 - curva epidêmica e ondas
+                      : Fig 18 - CFR temporal com vacinação
                       : Fig 06 - normalização por milhão
-                      : Fig 11 - CFR por continente
-                      : Fig 12 - correlação socioeconômica
-                      : Fig 14 - Rt e limiar crítico
+                      : Fig 11 - CFR por continente (boxplot)
+                      : Fig 20 - Stringency vs Rt
     section 14-20 min
         Conceitos : MapReduce com o diagrama
                   : Window Function com exemplo
+                  : Epidemiologia aplicada
                   : Perguntas
 ```
 

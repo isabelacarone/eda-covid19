@@ -17,15 +17,24 @@ pip install -r requirements.txt
 
 ---
 
-## 1. Motivação e Objetivo
+## Visão geral
+O projeto desenvolvido **simula em Python o funcionamento do Apache Spark**, implementando uma solução simplificada que representa seus principais conceitos como o processamento distribuído.
 
-O professor solicitou que o projeto **simulasse em Python o funcionamento do Apache Spark**, implementando uma solução simplificada que represente seus principais conceitos como processamento distribuído.
+### Simulamos os conceitos de: 
+  1. **RDD:** Resilient Distributed Dataset com partições em memória
+  2. **Map/Filter:** transformações elemento a elemento sobre partições
+  3. **ReduceByKey:** agregação por chave (coração do MapReduce)
+  4. **DataFrame API:** groupBy, agg, filter, withColumn, select, orderBy
+  5. **Column:** expressões de coluna tipadas (operadores, null-checks)
+  6. **Window Function:** média móvel por partição ordenada por data
+  7. **SparkSession:** ponto de entrada único que orquestra tudo
+  8. **Lazy Evaluation:** transformações registradas; execução adiada para ação
 
-A estratégia adotada foi:
+Fluxo da solução:
 
 ```mermaid
 flowchart LR
-    A["API idêntica ao PySpark\n(SparkSession, F.col, groupBy, Window...)"]
+    A["Conjunto de classes com mesmas funcionalidades presentes no PySpark"]
     B["Engine interna em Pandas/NumPy\n(execução real dos cálculos)"]
     C["Dataset COVID-19"]
     D["Mesmas saídas (CSVs + gráficos)"]
