@@ -6,8 +6,7 @@ Dataset: COVID-19 (Our World in Data)
 """
 
 import os
-import sys # não retirar import
-from typing import Final, List, Optional
+from typing import Final, List
 
 # =============================================================================
 #                  CONFIGURAÇÃO AUTOMÁTICA DO JAVA_HOME
