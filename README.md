@@ -29,8 +29,6 @@ python -c "import jdk; jdk.install('21')"
 
 O código detecta o JDK automaticamente a partir dessa localização.
 
-> Já a  **simulação** (`simulacao.py` e `simulacao.ipynb`) **não precisa de Java**. Roda com Python puro.
-
 ---
 
 ### Executando utilizando venv
