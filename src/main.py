@@ -298,11 +298,6 @@ def adicionar_media_movel(
     """
     nome_saida = f"{coluna}_ma{janela}"
 
-    # Spark 4.x não permite cast direto de DateType para BIGINT;
-    # usa unix_date() que retorna dias desde 1970-01-01 como IntegerType 
-    # optimize: nao sei se isso ta da melhor maneira, admito que foi confuso e fomos de IA
-    # convem analisar melhor 
-
     window_spec = (
         Window
         .partitionBy("country")
