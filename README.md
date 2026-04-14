@@ -5,6 +5,13 @@
 
 EDA de dataset público, Our World in Data, com dados da COVID-19 utilizando Apache Spark para a disciplina de Processamento de Grande Volumes de Dados.
 
+O projeto possui **duas implementações paralelas**:
+
+| Implementação | Arquivos | Descrição |
+|---|---|---|
+| **PySpark Real** | `src/main.py` + `notebook/main.ipynb` | Pipeline ETL e EDA com Apache Spark 4.1.1 + Java 21 |
+| **Simulação Python** | `src/simulacap.py` + `notebook/simulacao.ipynb` | Mesma análise implementando a engine do Spark do zero com pandas/numpy |
+
 ---
 
 ### Sobre o Java
@@ -22,6 +29,8 @@ python -c "import jdk; jdk.install('21')"
 
 O código detecta o JDK automaticamente a partir dessa localização.
 
+> Já a  **simulação** (`simulacao.py` e `simulacao.ipynb`) **não precisa de Java**. Roda com Python puro.
+
 ---
 
 ### Executando utilizando venv
@@ -33,7 +42,7 @@ source venv/bin/activate
 
 pip install -r requirements.txt
 
-# Instala o JDK (apenas na primeira vez)
+# para PySpark real
 python -c "import jdk; jdk.install('21')"
 ```
 
@@ -44,27 +53,40 @@ conda create -n bigdata_env python=3.12
 conda activate bigdata_env
 pip install -r requirements.txt
 
-# Instala o JDK via conda (já inclui jdk.incubator.vector)
 conda install -c conda-forge openjdk=17
 ```
 
 ---
 
-### Como executar o pipeline ETL
+### Como executar o pipeline ETL com PySpark
 
 ```bash
 # Com venv ativo
 python src/main.py
 ```
 
-### Como executar o notebook
+Saídas geradas em `data/processado/`.
+
+### Como executar a simulação do Spark
+
+```bash
+# Com venv ativo (não precisa de Java)
+python src/simulacao.py
+```
+
+Saídas geradas em `data/processado_sim/`.
+
+### Como executar os notebooks
 
 ```bash
 # Com venv ativo
-jupyter notebook notebook/notebook.ipynb
+jupyter notebook
 # ou
 jupyter lab
 ```
+
+- `notebook/main.ipynb` =>  EDA com PySpark
+- `notebook/simulacao.ipynb` => EDA com a simulação do Spark 
 
 ### Fazer download do dataset original
 
@@ -81,21 +103,26 @@ wget -O data/owid-covid.csv "https://catalog.ourworldindata.org/garden/covid/lat
 ```
 eda-covid-19/
 ├── notebook/
-│   └── notebook.ipynb      # Análise exploratória 
+│   ├── main.ipynb              # EDA com PySpark 
+│   └── simulacao.ipynb         # EDA com simulação Python
 ├── src/
-│   └── main.py             # Pipeline ETL completo com PySpark
+│   ├── main.py                 # Pipeline ETL com PySpark rea?
+│   └── main_simulado.py        # Simulação do Spark em Python 
 ├── data/
-│   ├── owid-covid.csv      # Dataset original (não versionado por exceder 100 MB)
-│   └── processado/         # Saídas do pipeline ETL
-├── figuras/                # Gráficos gerados pelo notebook
+│   ├── owid-covid.csv          # Dataset original (+100 MB)
+│   ├── processado/             # Saídas do pipeline PySpark real
+│   └── processado_sim/         # Saídas da simulação
+├── figuras/                    # Gráficos gerados pelos notebooks
+│   ├── *.png                   # Figuras do PySpark 
+│   └── *_sim.png               # Figuras da simulação
+├── DOCUMENTACAO.md             # Documentação de apoio, PySpark
+├── DOCUMENTACAO_SIMULACAO.md   # Documentação de apoio, simulação 
 ├── .gitignore
 ├── venv/
 ├── requirements.txt
 ├── CLAUDE.md
 └── README.md
 ```
-
----
 
 ### Referências
 
