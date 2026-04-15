@@ -89,7 +89,7 @@ eda-covid-19/
 ├── notebook/
 │   ├── main.ipynb              # EDA com PySpark 
 ├── src/
-│   ├── main.py                 # Pipeline ETL com PySpark rea?
+│   ├── main.py                 # Pipeline ETL com PySpark
 ├── data/
 │   ├── owid-covid.csv          # Dataset original (+100 MB)
 │   ├── processado/             # Saídas do pipeline PySpark real
