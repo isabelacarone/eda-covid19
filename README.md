@@ -104,7 +104,8 @@ eda-covid-19/
 ```
 
 ### Integrantes 
-SI6N
+
+**SI6N**
 
 - Gisela Medeiros
 - Isabela Carone 
