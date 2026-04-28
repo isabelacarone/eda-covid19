@@ -13,5 +13,3 @@ venv/
 # ignorar arquivos data
 data/
 *.csv 
-
-APRESENTACAO.md
