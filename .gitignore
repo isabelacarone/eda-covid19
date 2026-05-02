@@ -13,3 +13,5 @@ venv/
 # ignorar arquivos data
 data/
 *.csv 
+
+claude.md
